@@ -26,7 +26,7 @@ const buzz = p => { try { navigator.vibrate && navigator.vibrate(p); } catch {} 
     if (o.u && o.a) LS.set('becki-conn', JSON.stringify({ u: o.u, a: o.a }));
     if (o.k) { LS.set('becki-key', o.k); if (o.r) LS.set('becki-role', o.r); else LS.del('becki-role'); }
   } catch {}
-  history.replaceState(null, '', location.pathname + location.search);   // never leave secrets in the address bar
+  try { history.replaceState(null, '', location.pathname + location.search); } catch { try { location.hash = ''; } catch {} }   // never leave secrets in the address bar
 })();
 
 /* ---------- 2. talking to Supabase (or the in-page mock) ---------- */
