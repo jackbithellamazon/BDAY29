@@ -121,6 +121,7 @@ window.CLOUD = {
   test: () => rpc('becki_notify', { p_key: key, p_content: '🧪 Test from your Jack page: Discord is connected. ✅' }),
   async refresh() { const c = await rpc('becki_load', { p_key: key }); if (c && c.state) { LS.set(STATE_KEY, JSON.stringify(c.state)); } location.reload(); },
   logout() { ['becki-key', 'becki-role'].forEach(k => LS.del(k)); location.reload(); },
+  enterTest() { LS.set('becki-test-mode', '1'); location.reload(); },
   forget() { ['becki-key', 'becki-role', 'becki-conn', STATE_KEY].forEach(k => LS.del(k)); location.reload(); },
 };
 
@@ -149,9 +150,24 @@ async function start() {
   window.__INITIAL_STATE = local || {};
   lastCloudAt = cloud ? Date.parse(cloud.updated_at) || 0 : 0;
   window.JACK_MODE = role === 'jack';
+  // 🧪 Jack's TEST MODE: play the real game in a sandbox. Separate local state, nothing saved to the cloud, nothing sent to Discord.
+  const SANDBOX = role === 'jack' && LS.get('becki-test-mode') === '1';
+  if (SANDBOX) {
+    window.JACK_MODE = false; window.TEST_SANDBOX = true; window.STORE_KEY = 'becki-jack-test';
+    let ts = {}; try { ts = JSON.parse(LS.get('becki-jack-test') || '{}') || {}; } catch {}
+    window.__INITIAL_STATE = ts;
+    window.CLOUD.queueSave = () => {};                                         // never touches her real save
+    window.CLOUD.notify = (text) => { console.log('[test mode] would send to Discord:', text); return Promise.resolve(); };
+    window.CLOUD.setWebhook = window.CLOUD.test = () => Promise.reject(new Error('Not available in test mode'));
+    const bar = document.createElement('div'); bar.id = 'testbar-live';
+    bar.innerHTML = '<span>🧪 TEST MODE: nothing is saved or sent</span><button data-r>Reset</button><button data-x>Exit test mode</button>';
+    document.body.prepend(bar); document.body.classList.add('has-testbar');
+    bar.querySelector('[data-r]').onclick = () => { if (confirm('Wipe your test progress?')) { LS.del('becki-jack-test'); location.reload(); } };
+    bar.querySelector('[data-x]').onclick = () => { LS.del('becki-test-mode'); location.reload(); };
+  }
   app().innerHTML = '';
   window.__startApp();
-  if (!window.JACK_MODE) setInterval(pull, 60000), addEventListener('visibilitychange', () => document.visibilityState === 'visible' && pull());
+  if (!window.JACK_MODE && !SANDBOX) setInterval(pull, 60000), addEventListener('visibilitychange', () => document.visibilityState === 'visible' && pull());
 }
 
 // Becki's device picks up Jack's overrides (or her other device's progress) when it's newer than what it has

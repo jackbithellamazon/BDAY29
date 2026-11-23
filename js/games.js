@@ -143,7 +143,7 @@ function gTap(t, g, done) {
 
 function gMulti(t, g, done) {
   const order = shuffle(t.options.map((_, i) => i)), picked = new Set();
-  g.innerHTML = `${qCard(t.q)}<div class="opts" style="margin-top:14px">${order.map(i => `<button class="opt" data-k="${i}">${esc(t.options[i])}</button>`).join('')}</div><button class="btn block" data-a="go" style="margin-top:12px" disabled>Pick ${t.pick}</button><div class="after"></div>`;
+  g.innerHTML = `${qCard(t.q, t.image, t.video)}<div class="opts" style="margin-top:14px">${order.map(i => `<button class="opt" data-k="${i}">${esc(t.options[i])}</button>`).join('')}</div><button class="btn block" data-a="go" style="margin-top:12px" disabled>Pick ${t.pick}</button><div class="after"></div>`;
   const go = g.querySelector('[data-a=go]');
   g.querySelectorAll('.opt').forEach(b => b.onclick = () => { const k = +b.dataset.k; if (picked.has(k)) { picked.delete(k); b.classList.remove('picked'); } else if (picked.size < t.pick) { picked.add(k); b.classList.add('picked'); } buzz(6); go.disabled = picked.size !== t.pick; go.textContent = picked.size === t.pick ? 'Lock it in' : `Pick ${t.pick - picked.size} more`; });
   go.onclick = () => {
@@ -171,9 +171,10 @@ function gChoice(t, g, done) {
 }
 
 function gOpen(t, g, done) {
+  if (t.picks) return gPicks(t, g, done);
   if (t.fields) {
     const prev = S.prefs[t.id]?.parts || [];
-    g.innerHTML = `${qCard(t.q)}<div style="display:grid;gap:10px;margin-top:14px">${t.fields.map((f, i) => `<div><label class="small" style="font-weight:600;display:block;margin-bottom:6px">${esc(f)}</label><textarea class="field" style="min-height:${i ? 90 : 60}px">${esc(prev[i] || '')}</textarea></div>`).join('')}</div><button class="btn block" style="margin-top:12px" disabled>Save my answer</button><button class="btn ghost block" data-a="skip" style="margin-top:8px">Skip this one</button>`;
+    g.innerHTML = `${qCard(t.q, t.image, t.video)}<div style="display:grid;gap:10px;margin-top:14px">${t.fields.map((f, i) => `<div><label class="small" style="font-weight:600;display:block;margin-bottom:6px">${esc(f)}</label><textarea class="field" style="min-height:${i ? 90 : 60}px">${esc(prev[i] || '')}</textarea></div>`).join('')}</div><button class="btn block" style="margin-top:12px" disabled>Save my answer</button><button class="btn ghost block" data-a="skip" style="margin-top:8px">Skip this one</button>`;
     const tas = [...g.querySelectorAll('textarea')], b = g.querySelector('.btn');
     const upd = () => b.disabled = !tas[0].value.trim(); upd(); tas.forEach(x => x.oninput = upd);
     b.onclick = () => { const parts = tas.map(x => x.value.trim()); done(1, { raw: t.fields.map((f, i) => `${f} ${parts[i] || '–'}`).join('\n'), parts, msg: 'Saved for Jack. Thank you! 💚' }); };
@@ -181,7 +182,7 @@ function gOpen(t, g, done) {
     return;
   }
   const min = t.minChars || 2, prev = S.prefs[t.id];
-  g.innerHTML = `${qCard(t.q)}${t.choices ? `<div class="chips">${t.choices.map(c => `<button class="chip">${esc(c)}</button>`).join('')}</div>` : ''}<textarea class="field" style="margin-top:14px" placeholder="${t.choices ? 'Tap one, or write your own (add details!)…' : 'Write away…'}"></textarea><button class="btn block" style="margin-top:10px" disabled>${t.pref ? 'Save my answer' : `Send it to ${esc(C.from)}`}</button>${t.pref ? '<button class="btn ghost block" data-a="skip" style="margin-top:8px">Skip this one</button>' : ''}`;
+  g.innerHTML = `${qCard(t.q, t.image, t.video)}${t.choices ? `<div class="chips">${t.choices.map(c => `<button class="chip">${esc(c)}</button>`).join('')}</div>` : ''}<textarea class="field" style="margin-top:14px" placeholder="${t.choices ? 'Tap one, or write your own (add details!)…' : 'Write away…'}"></textarea><button class="btn block" style="margin-top:10px" disabled>${t.pref ? 'Save my answer' : `Send it to ${esc(C.from)}`}</button>${t.pref ? '<button class="btn ghost block" data-a="skip" style="margin-top:8px">Skip this one</button>' : ''}`;
   const ta = g.querySelector('textarea'), b = g.querySelector('.btn');
   if (prev && !prev.skipped) ta.value = prev.answer;
   const upd = () => b.disabled = ta.value.trim().length < min; upd();
@@ -189,6 +190,19 @@ function gOpen(t, g, done) {
   g.querySelectorAll('.chip').forEach(c => c.onclick = () => { c.classList.toggle('on'); const picked = [...g.querySelectorAll('.chip.on')].map(x => x.textContent); const extra = ta.value.split('\n').filter(l => !t.choices.includes(l.replace(/^• /, ''))).join('\n').trim(); ta.value = picked.map(p => '• ' + p).join('\n') + (extra ? '\n' + extra : ''); upd(); });
   b.onclick = () => done(1, { raw: ta.value.trim(), text: `📝 ${t.q}\n> ${ta.value.trim().replace(/\n/g, '\n> ')}`, msg: t.reveal || (t.pref ? 'Saved for Jack. Thank you! 🎂' : undefined) });
   const sk = g.querySelector('[data-a=skip]'); if (sk) sk.onclick = () => done(0, { skipped: true });
+}
+
+// photo + big pick buttons, any pick wins (Head or Cup?)
+function gPicks(t, g, done) {
+  g.innerHTML = `${t.image ? `<img class="pickimg" alt="" src="${esc(t.image)}">` : ''}<div class="q center" style="margin:12px 0 14px">${esc(t.q)}</div>
+    <div class="pickbig">${t.picks.filter(p => !p.small).map((p, i) => `<button class="pickb" data-i="${t.picks.indexOf(p)}"><span>${p.e}</span>${esc(p.l)}</button>`).join('')}</div>
+    ${t.picks.filter(p => p.small).map(p => `<button class="btn ghost block sm" style="margin-top:10px" data-i="${t.picks.indexOf(p)}">${esc(p.l)} ${p.e}</button>`).join('')}<div class="after"></div>`;
+  const im = g.querySelector('.pickimg'); if (im) im.onerror = () => im.remove();
+  g.querySelectorAll('[data-i]').forEach(b => b.onclick = () => {
+    const p = t.picks[+b.dataset.i]; g.querySelectorAll('[data-i]').forEach(x => { x.disabled = true; x.classList.toggle('pick', x === b); }); buzz([20, 40, 20]); confetti(60);
+    g.querySelector('.after').innerHTML = `<div class="fun" style="text-align:center;margin-top:14px;font-size:17px">${esc(p.line)}</div><button class="btn block" style="margin-top:12px">Bank it</button>`;
+    g.querySelector('.after .btn').onclick = () => done(1, { raw: p.l, text: `${t.emoji} ${t.title.replace(/\?$/, '')}: ${C.name} says **${p.l}** ${p.e}`, msg: p.line });
+  });
 }
 
 function gParcel(t, g, done) {
@@ -249,7 +263,7 @@ function gNaughtyNice(t, g, done) {
 function gList(t, g, done) {
   const found = new Set(); let wrongs = 0; const maxG = t.maxGuesses || 0;
   const draw = () => { g.querySelector('.slots2').innerHTML = t.items.map((it, i) => `<div class="slot2 ${found.has(i) ? 'on' : ''}">${found.has(i) ? '✓ ' + esc(it.label) : '?'}</div>`).join(''); g.querySelector('.cnt').textContent = `${found.size} / ${t.items.length} found` + (maxG ? ` · ${Math.max(0, maxG - wrongs - found.size)} guesses left` : ` · ${t.items.length - found.size} left`); };
-  g.innerHTML = `${qCard(t.q)}<div class="cnt center" style="font-weight:700;margin:14px 0 8px"></div><div class="slots2"></div><input class="field" style="margin-top:12px" placeholder="Type an item, press Enter…" autocomplete="off"><div class="after"></div><div class="row" style="margin-top:10px">${maxG ? '' : '<button class="btn ghost" data-a="give" style="flex:1">' + (t.partial ? 'I\'m done' : 'I\'m stuck, finish') + '</button>'}<button class="btn" data-a="go" style="flex:1">Add</button></div>${t.items.some(x => x.hint) ? '<button class="btn ghost block" data-a="fhint" style="margin-top:8px">⚽ Footballer hint</button><div class="fhints"></div>' : ''}`;
+  g.innerHTML = `${qCard(t.q, t.image, t.video)}<div class="cnt center" style="font-weight:700;margin:14px 0 8px"></div><div class="slots2"></div><input class="field" style="margin-top:12px" placeholder="Type an item, press Enter…" autocomplete="off"><div class="after"></div><div class="row" style="margin-top:10px">${maxG ? '' : '<button class="btn ghost" data-a="give" style="flex:1">' + (t.partial ? 'I\'m done' : 'I\'m stuck, finish') + '</button>'}<button class="btn" data-a="go" style="flex:1">Add</button></div>${t.items.some(x => x.hint) ? '<button class="btn ghost block" data-a="fhint" style="margin-top:8px">⚽ Footballer hint</button><div class="fhints"></div>' : ''}`;
   const inp = g.querySelector('input'), after = g.querySelector('.after'); draw(); inp.focus();
   const fh = g.querySelector('[data-a=fhint]'), shownH = new Set(); if (fh) fh.onclick = () => { const left = t.items.map((x, i) => i).filter(i => !found.has(i) && !shownH.has(i)); if (!left.length) { fh.disabled = true; fh.textContent = 'No hints left'; return; } const k = left[Math.floor(Math.random() * left.length)]; shownH.add(k); g.querySelector('.fhints').insertAdjacentHTML('beforeend', `<div class="fun">⚽ ${esc(t.items[k].hint)}</div>`); buzz(6); };
   const go = () => { const v = inp.value.trim(); if (!v) return; let hits = t.items.map((it, i) => [it, i]).filter(([it, i]) => !found.has(i) && matches(v, it.accept, true)); if (!hits.length && !t.items.some(it => matches(v, it.accept, true))) hits = t.items.map((it, i) => [it, i]).filter(([it, i]) => !found.has(i) && matches(v, it.accept)).slice(0, 1); if (hits.length) { hits.forEach(([, i]) => found.add(i)); buzz(12); after.innerHTML = `<div class="fun">✅ ${hits.map(([it]) => esc(it.label)).join(', ')}</div>`; draw(); if (found.size === t.items.length) setTimeout(() => done(1, { text: `🧺 Named all ${t.items.length}!` }), 600); } else { wrongs++; shake(inp); after.innerHTML = `<div class="fun">❌ ${maxG ? 'Nope!' : t.partial ? 'Nope (or you already got that one)!' : 'Not in the hamper (or already found)!'}</div>`; draw(); } inp.value = ''; inp.focus(); if (maxG && found.size < t.items.length && wrongs + found.size >= maxG) setTimeout(() => done(found.size / t.items.length, { wrong: true, text: `Got ${found.size}/${t.items.length} in ${maxG} guesses`, msg: `Out of guesses! It was ${t.items.map(x => x.label).join(' and ')}.` }), 500); };
@@ -259,19 +273,19 @@ function gList(t, g, done) {
 
 function gDone(t, g, done) {
   const hunt = t.cat === 'hunt';
-  g.innerHTML = qCard(t.q) + `<p class="small muted center" style="margin:12px 0 0">${hunt ? '🕵️‍♀️ The code is written on a hidden note. Find it!' : '🚶 Real-world task. When it\'s done, Jack gives you a secret code.'}</p>`;
+  g.innerHTML = qCard(t.q, t.image, t.video) + `<p class="small muted center" style="margin:12px 0 0">${hunt ? '🕵️‍♀️ The code is written on a hidden note. Find it!' : '🚶 Real-world task. When it\'s done, Jack gives you a secret code.'}</p>`;
   codePad(g, t, () => done(1, { text: `✅ Code accepted: ${t.title}` }), hunt ? 'FOUND IT? TYPE THE CODE' : undefined);
   if (t.optional) { const s = h(`<button class="btn ghost block" style="margin-top:10px">Not feeling this one? Swap it</button>`); g.appendChild(s); s.onclick = () => { g.innerHTML = `${qCard('Swap question: tell Jack one of your favourite memories of him.')}<textarea class="field" style="margin-top:14px"></textarea><button class="btn block" style="margin-top:10px" disabled>Send</button>`; const ta = g.querySelector('textarea'), sb = g.querySelector('.btn'); ta.oninput = () => sb.disabled = ta.value.trim().length < 10; sb.onclick = () => done(1, { text: `🔄 Swapped "${t.title}": ${ta.value.trim()}` }); }; }
 }
 function gPin(t, g, done) {
-  g.innerHTML = qCard(t.q);
+  g.innerHTML = qCard(t.q, t.image, t.video);
   pinPad(g, null, () => done(1, { text: '✅ Confirmed with Jack\'s PIN' }));
   if (t.optional) { const s = h(`<button class="btn ghost block" style="margin-top:10px">Not feeling this one? Swap it</button>`); g.appendChild(s); s.onclick = () => { g.innerHTML = `${qCard('Swap question: tell Jack one of your favourite memories of him.')}<textarea class="field" style="margin-top:14px"></textarea><button class="btn block" style="margin-top:10px" disabled>Send</button>`; const ta = g.querySelector('textarea'), sb = g.querySelector('.btn'); ta.oninput = () => sb.disabled = ta.value.trim().length < 10; sb.onclick = () => done(1, { text: `🔄 Swapped "${t.title}": ${ta.value.trim()}` }); }; }
 }
 
 function gReverse(t, g, done) {
   const n = t.clues || 1;
-  g.innerHTML = `${qCard(t.q)}<div style="display:grid;gap:8px;margin-top:14px">${Array.from({ length: n }, (_, k) => `<input class="field" placeholder="${esc(t.clueLabel || `Clue ${k + 1}`)}${n > 1 && k > 0 ? ' (optional)' : ''}">`).join('')}</div><button class="btn block" style="margin-top:12px" disabled>Send to Jack</button>`;
+  g.innerHTML = `${qCard(t.q, t.image, t.video)}<div style="display:grid;gap:8px;margin-top:14px">${Array.from({ length: n }, (_, k) => `<input class="field" placeholder="${esc(t.clueLabel || `Clue ${k + 1}`)}${n > 1 && k > 0 ? ' (optional)' : ''}">`).join('')}</div><button class="btn block" style="margin-top:12px" disabled>Send to Jack</button>`;
   const ins = [...g.querySelectorAll('input')], b = g.querySelector('.btn');
   ins.forEach(i => i.oninput = () => b.disabled = !ins[0].value.trim());
   b.onclick = () => {
@@ -283,14 +297,25 @@ function gReverse(t, g, done) {
 }
 
 function gRisk(t, g, done) {
-  g.innerHTML = `<div class="tot"><button class="totc" data-k="safe">🛟 Play it safe<br><span class="small muted" style="font-family:'DM Sans'">bank ${Math.round(t.safeFrac * 100)}% now</span></button><button class="totc" data-k="risk">🎲 Risk it<br><span class="small muted" style="font-family:'DM Sans'">100% or nothing</span></button></div>`;
-  g.querySelector('[data-k=safe]').onclick = () => done(t.safeFrac, { text: '🛟 Played it safe' });
-  g.querySelector('[data-k=risk]').onclick = () => {
-    g.innerHTML = `${qCard(t.q)}<input class="field" style="margin-top:14px" placeholder="One shot…" autocomplete="off"><button class="btn block" style="margin-top:10px">Lock it in</button>`;
-    const inp = g.querySelector('input');
-    const go = () => { if (!inp.value.trim()) return; const ok = matches(inp.value, t.answers); done(ok ? 1 : 0, { wrong: !ok, text: `🎲 Risked it: "${inp.value.trim()}" → ${ok ? 'WON' : 'lost'}`, msg: (ok ? 'Big win! ' : 'Ooh, unlucky! ') + (t.fun || '') }); };
-    g.querySelector('.btn').onclick = go; inp.onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); go(); } };
+  const pool = shuffle(t.pool || []), R = Math.min(t.rounds || 10, pool.length), share = 1 / R; let i = 0, banked = 0, safeN = 0, riskW = 0, riskL = 0;
+  // crypto-random order
+  for (let k = pool.length - 1; k > 0; k--) { const j = rnd(k + 1); [pool[k], pool[j]] = [pool[j], pool[k]]; }
+  const bar = () => `<div class="rbtop"><span>Round ${Math.min(i + 1, R)} of ${R}</span><b>${Math.round(banked / 1 * 100)}% banked</b></div><div class="prog"><i style="width:${banked * 100}%"></i></div>`;
+  const round = () => {
+    if (i >= R) return done(banked, { wrong: banked < 1, text: `🎲 Risk It: ${riskW} risks won, ${riskL} lost, ${safeN} safe → ${Math.round(banked * 100)}%`, msg: `${riskW} risk${riskW === 1 ? '' : 's'} won, ${safeN} played safe!` });
+    const q = pool[i];
+    g.innerHTML = `${bar()}<div class="tot" style="margin-top:12px"><button class="totc" data-k="safe">🛟 Play it safe<br><span class="small muted">bank a little</span></button><button class="totc" data-k="risk">🎲 Risk it<br><span class="small muted">answer for the full round</span></button></div>`;
+    g.querySelector('[data-k=safe]').onclick = () => { banked += share * .4; safeN++; i++; buzz(8); round(); };
+    g.querySelector('[data-k=risk]').onclick = () => {
+      g.innerHTML = `${bar()}${qCard(q.q)}<input class="field" style="margin-top:14px" placeholder="One shot…" autocomplete="off"><button class="btn block" style="margin-top:10px">Lock it in</button><div class="after"></div>`;
+      const inp = g.querySelector('input'); let over = false;
+      const go = () => { if (over || !inp.value.trim()) return; over = true; const ok = matches(inp.value, q.answers); if (ok) { banked += share; riskW++; confetti(40); buzz([20, 40, 20]); } else { riskL++; buzz([40, 30, 40]); }
+        g.querySelector('.after').innerHTML = `<div class="fun">${ok ? '✅ Yes! Full round banked.' : `❌ It was ${esc(String(q.answers[0]).replace(/\b\w/g, c => c.toUpperCase()))}.`}</div><button class="btn block" style="margin-top:10px">${i + 1 < R ? 'Next round →' : 'See my total'}</button>`;
+        g.querySelector('.after .btn').onclick = () => { i++; round(); }; };
+      g.querySelector('.btn').onclick = go; inp.onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); go(); } };
+    };
   };
+  round();
 }
 
 function gMemory(t, g, done) {
@@ -357,36 +382,39 @@ function gWhois(t, g, done) {
   step();
 }
 
-function gMatch3(t, g, done) {
+function gMatch3(t, g, done, ctx) {
+  const PZ = [...POOL().filter(p => !p.lose && !p.again), { e: '🌿', l: 'JACKPOT', jackpot: true }], JP = PZ.length - 1;
   const LINES = [[0,1,2],[3,4,5],[6,7,8],[0,3,6],[1,4,7],[2,5,8],[0,4,8],[2,4,6]];
-  const hasLine = c => LINES.find(l => c[l[0]] === c[l[1]] && c[l[1]] === c[l[2]]);
-  const makeCard = winIdx => { for (let tries = 0; tries < 2000; tries++) { const c = Array.from({ length: 9 }, () => Math.floor(Math.random() * t.prizes.length)); let line = null; if (winIdx != null) { line = LINES[Math.floor(Math.random() * LINES.length)]; line.forEach(i => c[i] = winIdx); } const found = LINES.filter(l => c[l[0]] === c[l[1]] && c[l[1]] === c[l[2]]); if ((winIdx == null && !found.length) || (winIdx != null && found.length === 1)) return { c, line }; } return { c: [0,1,2,3,4,5,6,7,0], line: null }; };
-  // odds: each card ~40% to win; the last card always wins if nothing has yet (it's her birthday)
-  const plan = []; let anyWin = false;
-  for (let k = 0; k < t.cards; k++) { const win = (k === t.cards - 1 && !anyWin) || Math.random() < .4; if (win) anyWin = true; plan.push(makeCard(win ? Math.floor(Math.random() * t.prizes.length) : null)); }
+  const makeCard = winIdx => { for (let tries = 0; tries < 3000; tries++) { const c = Array.from({ length: 9 }, () => rnd(PZ.length)); let line = null; if (winIdx != null) { line = LINES[rnd(LINES.length)]; line.forEach(i => c[i] = winIdx); } const found = LINES.filter(l => c[l[0]] === c[l[1]] && c[l[1]] === c[l[2]]); if ((winIdx == null && !found.length) || (winIdx != null && found.length === 1)) return { c, line }; } return { c: [0,1,2,3,4,5,6,7,0], line: null }; };
+  // ~40% per card; on her FIRST play the last card always wins if nothing has (birthday rule). Replays: no guarantee.
+  const cards = t.cards || 3, plan = []; let anyWin = false;
+  for (let k = 0; k < cards; k++) { const win = (!ctx && k === cards - 1 && !anyWin) || rnd(100) < 40; if (win) anyWin = true; plan.push(makeCard(win ? (rnd(100) < 12 ? JP : PZ.indexOf(pickPool())) : null)); }
   let k = 0; const won = [];
   const show = () => {
     if (k >= plan.length) return finish();
     const { c, line } = plan[k];
-    g.innerHTML = `<div class="small muted center" style="font-weight:700;letter-spacing:.06em">CARD ${k + 1} OF ${plan.length}</div><div class="m3wrap"><div class="m3">${c.map((p, i) => `<div class="m3c" data-i="${i}"><span>${t.prizes[p].e}</span><small>${esc(t.prizes[p].l)}</small></div>`).join('')}</div><canvas></canvas></div><p class="small muted center" data-msg style="margin:10px 0 0">Scratch the whole card with your finger</p><div class="after"></div>`;
-    const cv = g.querySelector('canvas'), ctx = cv.getContext('2d'), msg = g.querySelector('[data-msg]'); let down = false, last = null, n = 0, done_ = false;
-    requestAnimationFrame(() => { const r = cv.getBoundingClientRect(); cv.width = r.width * devicePixelRatio; cv.height = r.height * devicePixelRatio; ctx.scale(devicePixelRatio, devicePixelRatio); const gr = ctx.createLinearGradient(0, 0, r.width, r.height); gr.addColorStop(0, '#b7c4ab'); gr.addColorStop(.5, '#e1e8d8'); gr.addColorStop(1, '#9caf88'); ctx.fillStyle = gr; ctx.fillRect(0, 0, r.width, r.height); ctx.fillStyle = '#566f4c'; ctx.font = '800 18px "DM Sans", sans-serif'; ctx.textAlign = 'center'; ctx.fillText('🌿 SCRATCH ME 🌿', r.width / 2, r.height / 2 + 6); ctx.globalCompositeOperation = 'destination-out'; ctx.lineWidth = 46; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; });
+    g.innerHTML = `${ctx ? `<div class="replaybar">🔁 Replay ${ctx.left === Infinity ? '' : `· ${ctx.left} left`}</div>` : ''}<div class="small muted center" style="font-weight:700;letter-spacing:.06em">CARD ${k + 1} OF ${plan.length}</div><div class="m3wrap"><div class="m3">${c.map((p, i) => `<div class="m3c" data-i="${i}"><span>${PZ[p].e}</span><small>${esc(PZ[p].l)}</small></div>`).join('')}</div><canvas></canvas></div><p class="small muted center" data-msg style="margin:10px 0 0">Scratch the whole card with your finger</p><div class="after"></div>`;
+    const cv = g.querySelector('canvas'), cx2 = cv.getContext('2d'), msg = g.querySelector('[data-msg]'); let down = false, last = null, n = 0, done_ = false;
+    requestAnimationFrame(() => { const r = cv.getBoundingClientRect(); cv.width = r.width * devicePixelRatio; cv.height = r.height * devicePixelRatio; cx2.scale(devicePixelRatio, devicePixelRatio); const gr = cx2.createLinearGradient(0, 0, r.width, r.height); gr.addColorStop(0, '#b7c4ab'); gr.addColorStop(.5, '#e1e8d8'); gr.addColorStop(1, '#9caf88'); cx2.fillStyle = gr; cx2.fillRect(0, 0, r.width, r.height); cx2.fillStyle = '#566f4c'; cx2.font = '800 18px "DM Sans", sans-serif'; cx2.textAlign = 'center'; cx2.fillText('🌿 SCRATCH ME 🌿', r.width / 2, r.height / 2 + 6); cx2.globalCompositeOperation = 'destination-out'; cx2.lineWidth = 46; cx2.lineCap = 'round'; cx2.lineJoin = 'round'; });
     const reveal = () => { if (done_) return; done_ = true; cv.style.transition = 'opacity .5s'; cv.style.opacity = 0; cv.style.pointerEvents = 'none';
-      if (line) { line.forEach(i => g.querySelector(`.m3c[data-i="${i}"]`).classList.add('hit')); const pz = t.prizes[c[line[0]]]; won.push(pz); confetti(110); buzz([20, 40, 20]); msg.innerHTML = `<b>3 in a row! You win: ${esc(pz.money ? 'cash for your pot 💷' : pz.prize)}</b>`; }
+      if (line) { line.forEach(i => g.querySelector(`.m3c[data-i="${i}"]`).classList.add('hit')); const pz = PZ[c[line[0]]];
+        if (pz.jackpot) { const p1 = pickPool(q => !q.lose && !q.again && !q.forfeit), p2 = p1.money ? p1 : pickPool(q => !q.lose && !q.again && !q.forfeit); won.push(p1, p2); confetti(220); buzz([20, 40, 20, 40, 20]); msg.innerHTML = `<b>🌿🌿🌿 JACKPOT! DOUBLE WIN:</b><br>${[p1, p2].map(p => esc(p.money ? '£5 for your pot 💷' : p.prize || p.l)).join(' + ')}`; }
+        else { won.push(pz); confetti(110); buzz([20, 40, 20]); msg.innerHTML = `<b>3 in a row! ${pz.forfeit ? 'Uh oh…' : 'You win:'} ${esc(pz.money ? '£5 for your pot 💷' : pz.prize)}</b>`; } }
       else { buzz([30, 30, 30]); msg.textContent = 'No match this time…'; }
       const b = h(`<button class="btn block" style="margin-top:10px">${k + 1 < plan.length ? 'Next card →' : 'See my winnings'}</button>`); g.querySelector('.after').appendChild(b); b.onclick = () => { k++; show(); }; };
-    const check = () => { const d = ctx.getImageData(0, 0, cv.width, cv.height).data; let cl = 0; for (let i = 3; i < d.length; i += 64) if (d[i] === 0) cl++; if (cl / (d.length / 64) > .55) reveal(); };
+    const check = () => { const d = cx2.getImageData(0, 0, cv.width, cv.height).data; let cl = 0; for (let i = 3; i < d.length; i += 64) if (d[i] === 0) cl++; if (cl / (d.length / 64) > .55) reveal(); };
     const pt = e => { const b = cv.getBoundingClientRect(); return [e.clientX - b.left, e.clientY - b.top]; };
     cv.addEventListener('pointerdown', e => { down = true; last = null; e.preventDefault(); });
-    cv.addEventListener('pointermove', e => { if (!down || done_) return; e.preventDefault(); const [x, y] = pt(e); ctx.beginPath(); ctx.moveTo(...(last || [x, y])); ctx.lineTo(x, y); ctx.stroke(); last = [x, y]; if (++n % 6 === 0) check(); });
+    cv.addEventListener('pointermove', e => { if (!down || done_) return; e.preventDefault(); const [x, y] = pt(e); cx2.beginPath(); cx2.moveTo(...(last || [x, y])); cx2.lineTo(x, y); cx2.stroke(); last = [x, y]; if (++n % 6 === 0) check(); });
     addEventListener('pointerup', () => { if (down) { down = false; last = null; check(); } });
     cv.addEventListener('touchmove', e => e.preventDefault(), { passive: false });
     const sk = h(`<button class="btn ghost block sm" style="margin-top:8px">Reveal it all</button>`); g.querySelector('.after').appendChild(sk); sk.onclick = () => { sk.remove(); reveal(); };
   };
   const finish = () => {
-    const money = won.some(p => p.money), coupons = won.filter(p => !p.money);
-    g.innerHTML = `<div class="card center"><div style="font-size:40px">🎉</div><h2 style="margin:6px 0">Your winnings</h2>${won.length ? won.map(p => `<div class="coupon" style="text-align:center"><b>${esc(p.money ? 'Cash for your holiday pot 💷' : p.prize)}</b></div>`).join('') : '<p class="muted">No luck this time!</p>'}<button class="btn block" style="margin-top:10px">Bank it</button></div>`;
-    g.querySelector('.btn').onclick = () => { coupons.forEach((p, i) => { if (i > 0) S.prizes.push({ id: t.id + '-' + i, text: p.prize, from: t.title, used: false }); }); save(); done(money ? 1 : 0, { prize: coupons[0]?.prize, text: `🎟️ Scratchcards: ${won.map(p => p.money ? 'cash' : p.prize).join(', ') || 'nothing'}`, msg: coupons.length ? `${coupons.length} coupon${coupons.length > 1 ? 's' : ''} saved in your Coupons tab 🎟️` : undefined }); };
+    if (ctx) { const lines = won.map(p => awardPool(p, t.title) || (p.money ? 'Not a winner (pot bonus maxed out)' : null)); save(); return ctx.finish(lines.filter(x => x && !/maxed/.test(x)), `${won.length} win${won.length === 1 ? '' : 's'}`); }
+    const money_ = won.some(p => p.money);
+    g.innerHTML = `<div class="card center"><div style="font-size:40px">🎉</div><h2 style="margin:6px 0">Your winnings</h2>${won.length ? won.map(p => `<div class="coupon" style="text-align:center"><b>${esc(p.money ? 'Cash for your holiday pot 💷' : p.prize || p.l)}</b></div>`).join('') : '<p class="muted">No luck this time!</p>'}<p class="small muted" style="margin:8px 0 0">You can play the scratchcards again as many times as you like 🔁</p><button class="btn block" style="margin-top:10px">Bank it</button></div>`;
+    g.querySelector('.btn').onclick = () => { const got = won.filter(p => !p.money).map(p => awardPool(p, t.title)); save(); done(money_ ? 1 : 0, { text: `🎟️ Scratchcards: ${won.map(p => p.money ? 'cash' : p.prize || p.l).join(', ') || 'nothing'}`, msg: got.length ? `${got.length} coupon${got.length > 1 ? 's' : ''} saved in your Coupons tab 🎟️` : 'Come back and play again any time! 🔁' }); };
   };
   show();
 }
@@ -422,20 +450,125 @@ function gScratch3(t, g, done) {
   });
 }
 
-function gWheel(t, g, done) {
-  const segs = t.segments, n = segs.length, cols = ['#9caf88', '#e9b8a9', '#d9a94a', '#7f9a72', '#f2cfc4', '#b9c9a8', '#ecc777', '#c9d6bb'];
+function gCrossword(t, g, done) {
+  const cw = t.grid, W = cw.w, H = cw.h, words = cw.words;
+  const cells = {}; words.forEach((w, wi) => { for (let k = 0; k < w.answer.length; k++) { const r = w.row + (w.dir === 'D' ? k : 0), c = w.col + (w.dir === 'A' ? k : 0), key = r + ',' + c; (cells[key] ||= { r, c, ch: w.answer[k], words: [] }).words.push(wi); } });
+  const nums = {}; words.forEach(w => nums[w.row + ',' + w.col] = w.num);
+  const val = {}; let cur = 0, pos = 0, reveals = 0, checked = false;
+  const wcells = wi => { const w = words[wi]; return Array.from({ length: w.answer.length }, (_, k) => (w.row + (w.dir === 'D' ? k : 0)) + ',' + (w.col + (w.dir === 'A' ? k : 0))); };
+  const wordOk = wi => wcells(wi).every(k => val[k] === cells[k].ch);
+  g.innerHTML = `<div class="cwclue"></div><div class="cwgrid" style="grid-template-columns:repeat(${W},1fr)">${Array.from({ length: H }, (_, r) => Array.from({ length: W }, (_, c) => { const k = r + ',' + c; return cells[k] ? `<button class="cwc" data-k="${k}">${nums[k] ? `<i>${nums[k]}</i>` : ''}<b></b></button>` : '<span class="cwx"></span>'; }).join('')).join('')}</div>
+    <input class="cwin" autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false" inputmode="text" aria-label="crossword letter">
+    <div class="row" style="margin-top:12px"><button class="btn ghost" data-a="rev" style="flex:1">💡 Reveal a letter</button><button class="btn ghost" data-a="chk" style="flex:1">Check</button></div>
+    <button class="btn block" data-a="fin" style="margin-top:10px">Finish &amp; bank it</button>
+    <div class="cwlist">${['A', 'D'].map(d => `<div class="small" style="font-weight:800;margin:12px 0 4px">${d === 'A' ? 'ACROSS' : 'DOWN'}</div>` + words.map((w, wi) => w.dir === d ? `<button class="cwli" data-w="${wi}"><b>${w.num}</b> ${esc(w.clue)} (${w.answer.length})</button>` : '').join('')).join('')}</div>`;
+  const inp = g.querySelector('.cwin');
+  const draw = () => {
+    const act = new Set(wcells(cur)), ck = wcells(cur)[pos];
+    g.querySelectorAll('.cwc').forEach(b => { const k = b.dataset.k; b.querySelector('b').textContent = val[k] || ''; b.classList.toggle('on', act.has(k)); b.classList.toggle('cur', k === ck);
+      const ws = cells[k].words; b.classList.toggle('ok', checked && ws.some(wi => wordOk(wi))); b.classList.toggle('bad', checked && !!val[k] && val[k] !== cells[k].ch); });
+    const w = words[cur]; g.querySelector('.cwclue').innerHTML = `<b>${w.num} ${w.dir === 'A' ? 'Across' : 'Down'}</b> ${esc(w.clue)} (${w.answer.length})`;
+    g.querySelectorAll('.cwli').forEach(b => { b.classList.toggle('on', +b.dataset.w === cur); b.classList.toggle('done', wordOk(+b.dataset.w)); });
+  };
+  const focus = () => { try { inp.focus({ preventScroll: true }); } catch { inp.focus(); } };
+  g.querySelectorAll('.cwc').forEach(b => b.onclick = () => { const k = b.dataset.k, ws = cells[k].words; if (ws.includes(cur) && wcells(cur)[pos] === k && ws.length > 1) cur = ws.find(x => x !== cur); else if (!ws.includes(cur)) cur = ws[0]; pos = wcells(cur).indexOf(k); buzz(5); draw(); focus(); });
+  g.querySelectorAll('.cwli').forEach(b => b.onclick = () => { cur = +b.dataset.w; pos = 0; draw(); focus(); g.querySelector('.cwclue').scrollIntoView({ block: 'nearest' }); });
+  const put = ch => { const ks = wcells(cur); val[ks[pos]] = ch; if (pos < ks.length - 1) pos++; checked = false; draw(); if (words.every((_, wi) => wordOk(wi))) { confetti(90); buzz([20, 40, 20]); } };
+  inp.addEventListener('input', () => { const v = inp.value.toUpperCase().replace(/[^A-Z]/g, ''); inp.value = ''; for (const ch of v) put(ch); });
+  inp.addEventListener('keydown', e => { if (e.key === 'Backspace') { e.preventDefault(); const ks = wcells(cur); if (val[ks[pos]]) val[ks[pos]] = ''; else if (pos > 0) { pos--; val[ks[pos]] = ''; } checked = false; draw(); } });
+  g.querySelector('[data-a=rev]').onclick = () => { const ks = wcells(cur); const k = ks.find(x => val[x] !== cells[x].ch) ; if (!k) return; val[k] = cells[k].ch; reveals++; pos = Math.min(ks.indexOf(k) + 1, ks.length - 1); buzz(8); draw(); };
+  g.querySelector('[data-a=chk]').onclick = () => { checked = true; draw(); const n = words.filter((_, wi) => wordOk(wi)).length; buzz(n === words.length ? [20, 40, 20] : 10); };
+  g.querySelector('[data-a=fin]').onclick = () => { const n = words.filter((_, wi) => wordOk(wi)).length; if (n < words.length && !confirm(`Finish with ${n} of ${words.length} words right?`)) return; const frac = Math.max(0, n / words.length - reveals * 0.03); done(frac, { wrong: frac < 1, text: `📝 Crossword: ${n}/${words.length} words${reveals ? `, ${reveals} letters revealed` : ''}`, msg: n === words.length ? 'Every single word! 📝🎉' : `${n} of ${words.length} words right!` }); };
+  draw();
+}
+
+function gRedBlack(t, g, done, ctx) {
+  const N = 13, amt = t.amount || 0, step = .2, rounds = ctx ? 1 : 5; let frac = .5, round = 0, busy = false, rot = 0, wins = 0;
+  const col = k => k === 0 ? 'green' : (k % 2 ? 'red' : 'black');
+  const R = 140, wheel = Array.from({ length: N }, (_, k) => { const a0 = (k / N) * 2 * Math.PI - Math.PI / 2, a1 = ((k + 1) / N) * 2 * Math.PI - Math.PI / 2, am = (a0 + a1) / 2; const x0 = 150 + R * Math.cos(a0), y0 = 150 + R * Math.sin(a0), x1 = 150 + R * Math.cos(a1), y1 = 150 + R * Math.sin(a1), tx = 150 + R * .78 * Math.cos(am), ty = 150 + R * .78 * Math.sin(am); const fill = { green: '#2f8a4c', red: '#c0392b', black: '#22261f' }[col(k)]; return `<path d="M150,150 L${x0},${y0} A${R},${R} 0 0 1 ${x1},${y1} Z" fill="${fill}" stroke="#d9a94a" stroke-width="2"/><text x="${tx}" y="${ty}" transform="rotate(${am * 180 / Math.PI + 90} ${tx} ${ty})" text-anchor="middle" dominant-baseline="middle" font-size="15" font-weight="800" fill="#fff" font-family="DM Sans">${k}</text>`; }).join('');
+  const table = () => money(Math.floor(amt * frac * 2) / 2);
+  const draw = msg => {
+    g.innerHTML = `${ctx ? `<div class="replaybar">🔁 Replay · win a spin, win a prize${ctx.left === Infinity ? '' : ` · ${ctx.left} left`}</div>` : `<div class="rbtop"><span>Spin ${Math.min(round + 1, rounds)} of ${rounds}</span><b>${table()} on the table</b></div>`}
+      <div class="roul"><div class="roulptr"></div><svg viewBox="0 0 300 300" style="transform:rotate(${rot}deg)"><circle cx="150" cy="150" r="146" fill="#7a5a2b"/>${wheel}<circle cx="150" cy="150" r="46" fill="#7a5a2b" stroke="#d9a94a" stroke-width="3"/><text x="150" y="152" text-anchor="middle" dominant-baseline="middle" font-size="26">🎰</text></svg></div>
+      <p class="center muted" data-msg style="min-height:22px;margin:10px 0">${msg || 'Red or black? (Green 0 loses!)'}</p>
+      <div class="row"><button class="btn rbred" data-c="red" style="flex:1">🔴 Red</button><button class="btn rbblack" data-c="black" style="flex:1">⚫ Black</button></div>
+      ${ctx ? '' : `<button class="btn ghost block" data-a="cash" style="margin-top:10px">Cash out with ${table()}</button>`}`;
+    g.querySelectorAll('[data-c]').forEach(b => b.onclick = () => pick(b.dataset.c));
+    const cb = g.querySelector('[data-a=cash]'); if (cb) cb.onclick = () => finish();
+  };
+  const pick = c => {
+    if (busy) return; busy = true; g.querySelectorAll('[data-c],[data-a]').forEach(b => b.disabled = true);
+    const k = rnd(N), res = col(k), svg = g.querySelector('.roul svg');
+    rot = rot - (rot % 360) + 360 * 5 + (360 - (k + .5) * (360 / N));
+    svg.style.transition = 'transform 3.2s cubic-bezier(.12,.75,.12,1)'; svg.style.transform = `rotate(${rot}deg)`; buzz(10);
+    setTimeout(() => {
+      const ok = c === res; round++; if (ok) wins++;
+      if (!ctx) frac = Math.max(0, Math.min(1, frac + (ok ? step : -step)));
+      buzz(ok ? [20, 40, 20] : [40, 30, 40]); if (ok) confetti(50);
+      const msg = res === 'green' ? `0, green! The house wins. ❌` : ok ? `${k}, ${res}! Nice call. ✅` : `${k}, ${res}. Ouch. ❌`;
+      busy = false;
+      if (ctx) { draw(msg); return setTimeout(() => { const lines = ok ? [awardPool(pickPool(p => !p.lose && !p.again), t.title)] : []; save(); ctx.finish(lines.filter(Boolean), `${k} ${res} (picked ${c}) → ${ok ? 'won' : 'lost'}`); }, 900); }
+      if (round >= rounds || frac <= 0) { draw(msg); setTimeout(finish, 900); } else draw(msg);
+    }, 3300);
+  };
+  const finish = () => done(frac, { text: `🎰 Roulette: cashed out at ${Math.round(frac * 100)}% after ${round} spin${round === 1 ? '' : 's'}`, msg: 'Come back for more spins! Replays win prizes 🔁' });
+  draw();
+}
+
+function gRps(t, g, done) {
+  const amt = t.amount || 0, step = .2; let frac = .5, me = 0, him = 0, played = 0, busy = false;
+  const E = { rock: '✊', paper: '✋', scissors: '✌️' }, beats = { rock: 'scissors', paper: 'rock', scissors: 'paper' };
+  const talk = {
+    rock: ['Jack went rock.', 'Rock from Jack. Solid choice.', 'Jack threw rock.', 'Rock! Jack looks smug.', 'Jack picked rock this time.'],
+    paper: ['Jack went paper.', 'Paper from Jack.', 'Jack threw paper. Sneaky.', 'Paper! Jack is acting like he planned it.', 'Jack picked paper this time.'],
+    scissors: ['Jack went scissors.', 'Scissors from Jack.', 'Jack threw scissors. Snip snip.', 'Scissors! Jack thinks he is clever.', 'Jack picked scissors this time.'] };
+  const draw = msg => {
+    g.innerHTML = `<div class="rbtop"><span>You ${me} · Jack ${him}</span><b>${money(Math.floor(amt * frac * 2) / 2)} at stake</b></div>
+      <div class="rpsarena"><div class="rpshand" data-me>❔</div><span class="muted" style="font-weight:800">VS</span><div class="rpshand" data-him>❔</div></div>
+      <p class="center muted" data-msg style="min-height:44px;margin:8px 0">${msg || 'First to 3. Pick your weapon!'}</p>
+      <div class="rpsbtns">${Object.keys(E).map(k => `<button class="rpsb" data-p="${k}">${E[k]}<small>${k}</small></button>`).join('')}</div>`;
+    g.querySelectorAll('[data-p]').forEach(b => b.onclick = () => play(b.dataset.p));
+  };
+  const play = p => {
+    if (busy) return; busy = true; const j = Object.keys(E)[rnd(3)];
+    const mh = g.querySelector('[data-me]'), jh = g.querySelector('[data-him]'); mh.classList.add('shakeh'); jh.classList.add('shakeh'); buzz(10);
+    setTimeout(() => {
+      mh.classList.remove('shakeh'); jh.classList.remove('shakeh'); mh.textContent = E[p]; jh.textContent = E[j];
+      let msg = talk[j][rnd(talk[j].length)];
+      if (p === j) msg += ' Tie! Go again.';
+      else if (beats[p] === j) { me++; played++; frac = Math.min(1, frac + step); msg += ' You win the round! ✅'; confetti(40); buzz([20, 40, 20]); }
+      else { him++; played++; frac = Math.max(0, frac - step); msg += ' Jack takes it. ❌'; buzz([40, 30, 40]); }
+      g.querySelector('[data-msg]').textContent = msg; busy = false;
+      if (me >= 3 || him >= 3 || played >= 5) setTimeout(() => done(frac, { wrong: frac < 1, text: `✊ RPS vs Jack: ${me}-${him}`, msg: me > him ? `You beat Jack ${me}-${him}! 🏆` : `Jack won ${him}-${me}… this time.` }), 1100);
+      else setTimeout(() => { const keep = g.querySelector('[data-msg]').textContent; draw(keep); g.querySelector('[data-me]').textContent = E[p]; g.querySelector('[data-him]').textContent = E[j]; }, 900);
+    }, 700);
+  };
+  draw();
+}
+
+function gWheel(t, g, done, ctx) {
+  const segs = t.segments.map(s => typeof s === 'string' ? { e: '', l: s, prize: s, again: /spin again/i.test(s) } : s), n = segs.length, cols = ['#9caf88', '#e9b8a9', '#d9a94a', '#7f9a72', '#f2cfc4', '#b9c9a8', '#ecc777', '#c9d6bb'];
   const R = 150, paths = segs.map((s, k) => {
     const a0 = (k / n) * 2 * Math.PI - Math.PI / 2, a1 = ((k + 1) / n) * 2 * Math.PI - Math.PI / 2, am = (a0 + a1) / 2;
     const x0 = R + R * Math.cos(a0), y0 = R + R * Math.sin(a0), x1 = R + R * Math.cos(a1), y1 = R + R * Math.sin(a1);
     const tx = R + R * .6 * Math.cos(am), ty = R + R * .6 * Math.sin(am);
-    return `<path d="M${R},${R} L${x0},${y0} A${R},${R} 0 0 1 ${x1},${y1} Z" fill="${cols[k % cols.length]}" stroke="#fffdf8" stroke-width="3"/><text x="${tx}" y="${ty}" transform="rotate(${am * 180 / Math.PI} ${tx} ${ty})" text-anchor="middle" dominant-baseline="middle" font-size="10" font-weight="600" fill="#2f3a2c" font-family="DM Sans">${esc(s.length > 22 ? s.slice(0, 20) + '…' : s)}</text>`;
+    const lab = `${s.e ? s.e + ' ' : ''}${s.l}`;
+    return `<path d="M${R},${R} L${x0},${y0} A${R},${R} 0 0 1 ${x1},${y1} Z" fill="${s.lose ? '#d8d6cc' : s.again ? '#566f4c' : cols[k % cols.length]}" stroke="#fffdf8" stroke-width="3"/><text x="${tx}" y="${ty}" transform="rotate(${am * 180 / Math.PI} ${tx} ${ty})" text-anchor="middle" dominant-baseline="middle" font-size="10.5" font-weight="700" fill="${s.again ? '#fff' : '#2f3a2c'}" font-family="DM Sans">${esc(lab.length > 20 ? lab.slice(0, 19) + '…' : lab)}</text>`;
   }).join('');
-  g.innerHTML = `<div class="wheelwrap"><div class="pointer"></div><svg viewBox="0 0 300 300">${paths}<circle cx="150" cy="150" r="22" fill="#fffdf8"/><text x="150" y="152" text-anchor="middle" dominant-baseline="middle" font-size="20">🎂</text></svg></div><button class="btn block">Spin!</button><div class="after"></div>`;
-  const svg = g.querySelector('svg'), b = g.querySelector('.btn');
+  const left = ctx ? ctx.left : replayMax(t);
+  g.innerHTML = `<div class="replaybar">🎡 ${left === Infinity ? '' : `${left} spin${left === 1 ? '' : 's'} left`}${ctx ? '' : ' · this is your first'}</div><div class="wheelwrap"><div class="pointer"></div><svg viewBox="0 0 300 300">${paths}<circle cx="150" cy="150" r="22" fill="#fffdf8"/><text x="150" y="152" text-anchor="middle" dominant-baseline="middle" font-size="20">🎂</text></svg></div><button class="btn block">Spin!</button><div class="after"></div>`;
+  const svg = g.querySelector('svg'), b = g.querySelector('.btn'); let rot = 0;
   b.onclick = () => {
-    b.disabled = true; const k = Math.floor(Math.random() * n);
-    svg.style.transform = `rotate(${360 * 6 + (360 - (k + .5) * (360 / n))}deg)`; buzz(10);
-    setTimeout(() => { if (/spin again/i.test(segs[k])) { svg.style.transition = 'none'; svg.style.transform = 'rotate(0deg)'; void svg.offsetWidth; svg.style.transition = ''; b.disabled = false; b.textContent = 'Spin again! 🎡'; buzz(15); return; } buzz([20, 40, 20]); confetti(80); g.querySelector('.after').innerHTML = `<div class="coupon" style="text-align:center"><span class="small muted">THE WHEEL HAS SPOKEN</span><b style="font-size:20px">${esc(segs[k])}</b></div><button class="btn block">Claim it</button>`; b.remove(); g.querySelector('.after .btn').onclick = () => done(1, { prize: segs[k], text: `🎡 Wheel: **${segs[k]}**` }); }, 4700);
+    b.disabled = true; const k = rnd(n), s = segs[k];
+    rot = rot - (rot % 360) + 360 * 6 + (360 - (k + .5) * (360 / n)); svg.style.transform = `rotate(${rot}deg)`; buzz(10);
+    setTimeout(() => {
+      if (s.again) { b.disabled = false; b.textContent = 'Spin again! 🎡 (free spin)'; buzz(15); g.querySelector('.after').innerHTML = '<div class="fun" style="text-align:center">🔁 Spin again! This one doesn\'t count.</div>'; return; }
+      const got = awardPool(s, t.title); save();
+      const label = got || (s.money ? 'Not a winner (pot bonus maxed out)' : 'Not a winner ❌');
+      if (got) { buzz([20, 40, 20]); confetti(80); } else buzz([30, 30, 30]);
+      g.querySelector('.after').innerHTML = `<div class="coupon" style="text-align:center"><span class="small muted">THE WHEEL HAS SPOKEN</span><b style="font-size:20px">${esc(label)}</b></div><button class="btn block">${ctx ? 'Done' : 'Claim it'}</button>`; b.remove();
+      g.querySelector('.after .btn').onclick = () => ctx ? ctx.finish(got ? [got] : [], `${s.e || ''} ${s.l}`) : done(1, { text: `🎡 Wheel spin 1/${replayMax(t)}: **${s.l}**`, msg: got ? `You won: ${got}. You've got ${replayMax(t) - 1} more spins! 🔁` : `Not a winner this time… but you've got ${replayMax(t) - 1} more spins! 🔁` });
+    }, 4700);
   };
 }
 
@@ -491,7 +624,7 @@ function gReveal(t, g, done) {
 function gOrder(t, g, done) {
   const n = t.images.length, idx = shuffle(t.images.map((_, i) => i)); let picked = [];
   const draw = () => {
-    g.innerHTML = `${qCard(t.q)}<div class="ordgrid">${idx.map(i => `<button class="ord" data-i="${i}"><img src="${esc(t.images[i])}">${picked.includes(i) ? `<span class="onum">${picked.indexOf(i) + 1}</span>` : ''}</button>`).join('')}</div><p class="small muted center" style="margin:8px 0 0">${picked.length}/${n} picked · tap a numbered one to undo it</p><div class="row" style="margin-top:12px"><button class="btn ghost" data-a="reset" style="flex:1">Start again</button><button class="btn" data-a="go" style="flex:1" ${picked.length === n ? '' : 'disabled'}>Lock it in</button></div><div class="after"></div>`;
+    g.innerHTML = `${qCard(t.q, t.image, t.video)}<div class="ordgrid">${idx.map(i => `<button class="ord" data-i="${i}"><img src="${esc(t.images[i])}">${picked.includes(i) ? `<span class="onum">${picked.indexOf(i) + 1}</span>` : ''}</button>`).join('')}</div><p class="small muted center" style="margin:8px 0 0">${picked.length}/${n} picked · tap a numbered one to undo it</p><div class="row" style="margin-top:12px"><button class="btn ghost" data-a="reset" style="flex:1">Start again</button><button class="btn" data-a="go" style="flex:1" ${picked.length === n ? '' : 'disabled'}>Lock it in</button></div><div class="after"></div>`;
     g.querySelectorAll('.ord').forEach(b => b.onclick = () => { const i = +b.dataset.i; if (picked.includes(i)) picked = picked.slice(0, picked.indexOf(i)); else picked.push(i); buzz(6); draw(); });
     g.querySelector('[data-a=reset]').onclick = () => { picked = []; draw(); };
     g.querySelector('[data-a=go]').onclick = () => {

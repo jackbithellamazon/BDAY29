@@ -19,7 +19,7 @@ function tick() {
 /* ---------- shell ---------- */
 function render() {
   const app = $('#app'); app.innerHTML = ''; document.body.classList.toggle('test', TEST);
-  if (window.JACK_MODE) { const jb = h(`<div class="jackbar"><span>👀 Jack's view of Becki's game</span><button data-jr>🔄 Refresh</button><button data-jp>🧔‍♂️ Jack panel</button></div>`); jb.querySelector('[data-jr]').onclick = () => window.CLOUD.refresh(); jb.querySelector('[data-jp]').onclick = () => jackCorner(true); app.appendChild(jb); }
+  if (window.JACK_MODE) { const jb = h(`<div class="jackbar"><span>👀 Jack's view of Becki's game</span><button data-jr>🔄 Refresh</button><button data-jp>🧔‍♂️ Jack panel</button><button data-jt>🧪 Play as Becki (test mode, nothing saves)</button></div>`); jb.querySelector('[data-jt]').onclick = () => window.CLOUD.enterTest(); jb.querySelector('[data-jr]').onclick = () => window.CLOUD.refresh(); jb.querySelector('[data-jp]').onclick = () => jackCorner(true); app.appendChild(jb); }
   if (TEST) app.appendChild(h(`<div class="testbar">🔧 Jack's test mode: drafts shown${SEND ? ', posting to Discord' : ', nothing sent'} <button id="tReset">Reset</button><button id="tAll">Complete all</button></div>`));
   const w = h('<div class="wrap"></div>'); app.appendChild(w);
   ({ home: renderHome, prizes: renderPrizes, finale: renderFinale }[tab])(w);
@@ -30,7 +30,7 @@ function render() {
   nav.querySelectorAll('button').forEach(b => b.onclick = () => { tab = b.dataset.t; buzz(8); render(); scrollTo(0, 0); });
   app.appendChild(nav);
   if (TEST) {
-    $('#tReset').onclick = () => { try { localStorage.removeItem(KEY); } catch {} Object.keys(S).forEach(k => delete S[k]); S.done = {}; S.prizes = []; S.prefs = {}; S.plan = {}; tab = 'home'; cat = null; document.querySelectorAll('.sheet,.modal,.intro').forEach(x => x.remove()); document.body.style.overflow = ''; resetting = true; render(); intro(); setTimeout(() => { resetting = false; }, 0); try { location.reload(); } catch {} };
+    $('#tReset').onclick = () => { try { localStorage.removeItem(KEY); } catch {} Object.keys(S).forEach(k => delete S[k]); S.done = {}; S.prizes = []; S.prefs = {}; S.plan = {}; S.bonus = 0; S.plays = {}; S.collected = 0; tab = 'home'; cat = null; document.querySelectorAll('.sheet,.modal,.intro').forEach(x => x.remove()); document.body.style.overflow = ''; resetting = true; render(); intro(); setTimeout(() => { resetting = false; }, 0); try { location.reload(); } catch {} };
     $('#tAll').onclick = () => { scored().forEach(t => S.done[t.id] ||= { frac: 1, at: Date.now() }); save(); render(); };
   }
 }
@@ -79,7 +79,7 @@ function renderHome(w) {
     const list = h('<div class="rows"></div>');
     ts.forEach(t => {
       const d = S.done[t.id], wait = waiting(t), rw = ['done', 'reverse', 'code', 'qr', 'naughtynice'].includes(t.type), big = (t.amount || 0) >= 25;
-      const b = h(`<button class="trow ${d ? 'done' : ''}"><span class="em">${ico(t.emoji)}</span><span class="tt"><b>${esc(t.title)}</b><span class="tags">${t.draft ? '<i class="tag dark">DRAFT</i>' : ''}${wait ? `<i class="tag">${esc(t.afterNote || '🔒 Unlocks after the others')}</i>` : ''}${rw ? '<i class="tag">🚶 Real world</i>' : ''}${d ? `<i class="tag gold">+${money(won(t))}</i>` : ''}${t.optional ? '<i class="tag">Optional</i>' : ''}</span></span><span class="st">${d ? '✓' : '›'}</span></button>`);
+      const b = h(`<button class="trow ${d ? 'done' : ''}"><span class="em">${ico(t.emoji)}</span><span class="tt"><b>${esc(t.title)}</b><span class="tags">${t.draft ? '<i class="tag dark">DRAFT</i>' : ''}${wait ? `<i class="tag">${esc(t.afterNote || '🔒 Unlocks after the others')}</i>` : ''}${rw ? '<i class="tag">🚶 Real world</i>' : ''}${d ? `<i class="tag gold">+${money(won(t))}</i>` : ''}${d && t.replay && playsLeft(t) ? `<i class="tag">🔁 ${t.replay.max ? `${playsLeft(t)} ${t.type === 'wheel' ? 'spins' : 'plays'} left` : 'Play again'}</i>` : ''}${t.optional ? '<i class="tag">Optional</i>' : ''}</span></span><span class="st">${d ? (t.replay && playsLeft(t) ? '🔁' : '✓') : '›'}</span></button>`);
       b.onclick = () => { if ((S.locked || wait) && !d) { b.classList.add('shake'); setTimeout(() => b.classList.remove('shake'), 400); return; } openTask(t); }; if ((S.locked || wait) && !d) b.classList.add('locked'); list.appendChild(b);
     });
     w.appendChild(list);
@@ -113,11 +113,34 @@ function openTask(t) {
   sh.querySelector('.back').onclick = close;
   const g = sh.querySelector('.game');
   const prev = S.done[t.id];
+  if (prev && !t.pref && t.replay) {
+    const fnR = { match3: gMatch3, wheel: gWheel, redblack: gRedBlack }[t.type];
+    if (!playsLeft(t)) { g.innerHTML = `<div class="card center"><div style="font-size:40px">🎉</div><h3 style="margin:8px 0">All ${replayMax(t)} ${t.type === 'wheel' ? 'spins' : 'plays'} used</h3><p class="muted">Nice work. Your prizes are in the Coupons tab.</p><button class="btn block">Back</button></div>`; g.querySelector('.btn').onclick = close; return; }
+    const ctx = { replay: true, left: playsLeft(t), playNo: playsUsed(t) + 1, finish: (lines, text) => replayFinish(t, lines, text, close) };
+    return fnR(t, g, null, ctx);
+  }
   if (prev && !t.pref) { g.innerHTML = `<div class="card center"><div style="font-size:40px">✅</div><h3 style="margin:8px 0">Already completed</h3><p class="muted">${prev.note ? esc(prev.note) : 'Nice work. This one is banked.'}</p><button class="btn block">Back</button></div>`; g.querySelector('.btn').onclick = close; return; }
   const done = (frac, detail) => complete(t, frac, detail || {}, close);
-  const fn = { emoji: gEmoji, whois: gWhois, match3: gMatch3, search: gSearch, wordle: gWordle, missing: gMissing, scramble: gScramble, tap: gTap, multi: gMulti, list: gList, done: gDone, quiz: gQuiz, answer: gAnswer, choice: gChoice, open: gOpen, parcel: gParcel, memory5: gMemory5, listing: gListing, naughtynice: gNaughtyNice, pin: gPin, reverse: gReverse, risk: gRisk, memory: gMemory, wheel: gWheel, 'this-or-that': gTot, scratch: gScratch, code: gCode, qr: gQr, photo: gPhoto, reveal: gReveal, order: gOrder }[t.type];
+  const fn = { crossword: gCrossword, redblack: gRedBlack, rps: gRps, emoji: gEmoji, whois: gWhois, match3: gMatch3, search: gSearch, wordle: gWordle, missing: gMissing, scramble: gScramble, tap: gTap, multi: gMulti, list: gList, done: gDone, quiz: gQuiz, answer: gAnswer, choice: gChoice, open: gOpen, parcel: gParcel, memory5: gMemory5, listing: gListing, naughtynice: gNaughtyNice, pin: gPin, reverse: gReverse, risk: gRisk, memory: gMemory, wheel: gWheel, 'this-or-that': gTot, scratch: gScratch, code: gCode, qr: gQr, photo: gPhoto, reveal: gReveal, order: gOrder }[t.type];
   if (!fn) { g.innerHTML = '<p class="center muted">Coming soon.</p>'; return; }
   fn(t, g, done);
+}
+
+function replayFinish(t, lines, text, close) {
+  S.plays[t.id] = playsUsed(t) + 1; save();
+  const n = S.plays[t.id], max = replayMax(t), left = playsLeft(t), got = lines.filter(Boolean);
+  const wd = t.type === 'wheel' ? 'spin' : 'play';
+  discord(`🔁 **${C.name}** · ${t.title} ${max === Infinity ? `${wd} ${n}` : `${wd} ${n}/${max}`}: ${text}${got.length ? `\n🎁 ${got.join(' · ')}` : ''}\n_Pot: ${money(earned())} of ${money(C.cap)} (hidden from her)_`);
+  if (got.length) { confetti(110); buzz([20, 40, 20]); } else buzz([30, 30, 30]);
+  const m = h(`<div class="modal"><div class="card"><div style="font-size:40px">${got.length ? '🎁' : '🙈'}</div><h2 style="margin:6px 0 8px">${got.some(x => /owe Jack/.test(x)) ? 'Uh oh… 😏' : got.length ? 'You won!' : 'Not a winner this time'}</h2>
+    ${got.map(x => `<div class="coupon" style="text-align:center"><b>${esc(x)}</b></div>`).join('')}
+    ${got.some(x => !/holiday pot/.test(x)) ? '<p class="small muted" style="margin:4px 0 0">Coupons are saved in your Coupons tab 🎟️</p>' : ''}
+    <p style="margin:10px 0 0;font-weight:600">🍯 Your pot: ${money(earned())}</p>
+    ${left ? `<button class="btn block" data-a="again" style="margin-top:14px">Play again${max === Infinity ? '' : ` (${left} left)`}</button>` : ''}
+    <button class="btn ghost block" data-a="back" style="margin-top:8px">Back to the challenges</button></div></div>`);
+  document.body.appendChild(m);
+  m.querySelector('[data-a=back]').onclick = () => { m.remove(); close(); };
+  const ag = m.querySelector('[data-a=again]'); if (ag) ag.onclick = () => { m.remove(); close(); setTimeout(() => openTask(t), 60); };
 }
 
 function complete(t, frac, detail, close) {
@@ -187,18 +210,45 @@ function pinPad(g, label, onOk) {
 function renderPrizes(w) {
   header(w);
   w.appendChild(h('<div class="sect">🎟️ Your coupons</div>'));
-  w.appendChild(h(`<p class="small muted" style="margin:-4px 2px 12px;line-height:1.5">Win these from scratchcards, the wheel and a few challenges. When you want to cash one in, tap <b>Redeem</b> and ${esc(C.from)} gets a ping. 😉</p>`));
+  w.appendChild(h(`<p class="small muted" style="margin:-4px 2px 12px;line-height:1.5">Win these from the scratchcards, the wheel and the roulette. Every 3 little coupons unlocks a BIG bonus one. To cash one in, tap <b>Redeem</b> and ask ${esc(C.from)} to confirm it with his PIN. 😉</p>`));
   if (!S.prizes.length) w.appendChild(h('<div class="empty">No coupons yet. The scratchcards and the wheel are a good place to start! 🎟️</div>'));
-  S.prizes.forEach(p => {
-    const el = h(`<div class="tkt ${p.used ? 'used' : ''}"><div class="l"><b>${esc(p.text)}</b><span class="small muted">From: ${esc(p.from)}</span></div><div class="r">${p.used ? '<span class="small" style="font-weight:600;color:var(--sage-3)">Redeemed ✓</span>' : '<button>Redeem</button>'}</div></div>`);
+  const small = S.prizes.filter(x => x.size === 'small').length % 3;
+  if (S.prizes.length) w.appendChild(h(`<div class="collect"><b>Collect-a-bonus</b><span>${[0, 1, 2].map(i => `<i class="${i < small ? 'on' : ''}">🎟️</i>`).join('')}</span><small>${3 - small} more little coupon${3 - small === 1 ? '' : 's'} = a BIG bonus</small></div>`));
+  const day = ts => ts ? new Date(ts).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : '';
+  [...S.prizes].sort((x, y) => (x.used ? 1 : 0) - (y.used ? 1 : 0)).forEach(p => {
+    const kind = p.owed ? 'owed' : p.jack ? 'jackowes' : p.size === 'bonus' ? 'bonus' : '', sealed = p.mystery && !p.used;
+    const tag = p.owed ? '<span class="tkttag red">😏 OWED TO JACK</span>' : p.jack ? '<span class="tkttag">🫡 JACK OWES YOU</span>' : p.size === 'bonus' ? '<span class="tkttag gold">🎉 BONUS</span>' : sealed ? '<span class="tkttag gold">🎁 MYSTERY</span>' : '';
+    const el = h(`<div class="tkt ${p.used ? 'used' : ''} ${kind}"><div class="l"><div class="tkte">${sealed ? '🎁' : esc(p.e || '🎟️')}</div><div class="tktb">${tag}<b>${sealed ? 'Mystery coupon' : esc(p.text)}</b><span class="small muted">From: ${esc(p.from)}${p.at ? ' · ' + day(p.at) : ''}</span></div></div><div class="r">${p.used ? `<span class="stamp">${p.owed ? 'PAID' : 'REDEEMED'}<small>${day(p.usedAt)}</small></span>` : `<button>${p.owed ? 'Pay up' : sealed ? 'Open &amp; redeem' : 'Redeem'}</button>`}</div></div>`);
     const b = el.querySelector('button');
-    if (b) b.onclick = () => { if (!confirm(`Redeem "${p.text}" now? ${C.from} gets a notification.`)) return; p.used = true; save(); discord(`🎁 **${C.name}** is redeeming: **${p.text}**. Pay up! 😄`); confetti(50); render(); };
+    if (b) b.onclick = () => redeemSheet(p, w);
     w.appendChild(el);
   });
   S.prizes.forEach(p => p.seen = true); save();
   const sv = h(`<div class="card savecard"><div class="row" style="gap:12px;align-items:flex-start"><span style="font-size:26px">💾</span><div style="flex:1"><b>Save &amp; move devices</b><div class="small muted" style="margin-top:3px;line-height:1.45">Playing on another phone or laptop? Export here, import there.${S.lastBackup ? `<br>Last saved to ${esc(C.from)}: ${esc(new Date(S.lastBackup).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }))}` : ''}</div></div></div><button class="btn ghost block" style="margin-top:12px">Open save options</button></div>`);
   sv.querySelector('.btn').onclick = () => saveSheet();
   w.appendChild(sv);
+}
+
+function redeemSheet(p, w) {
+  const m = h(`<div class="modal"><div class="card center"></div></div>`), c = m.querySelector('.card'); document.body.appendChild(m);
+  const close = () => { m.remove(); render(); };
+  const ask = () => {
+    c.innerHTML = `<div style="font-size:42px">${esc(p.e || '🎟️')}</div><h2 style="margin:6px 0 4px">${esc(p.text)}</h2><p class="muted" style="margin:0 0 12px">${p.owed ? `Paid ${esc(C.from)} what you owe? He confirms it with his PIN. 😏` : `Hand the phone to ${esc(C.from)}: he types his PIN to confirm it's happening. ✅`}</p><div data-pin></div><button class="btn ghost block" data-a="later" style="margin-top:8px">Save it for later</button>`;
+    c.querySelector('[data-a=later]').onclick = close;
+    pinPad(c.querySelector('[data-pin]'), `${C.from.toUpperCase()}: PIN TO CONFIRM`, () => {
+      p.used = true; p.usedAt = Date.now(); save(); confetti(90); buzz([20, 40, 20]);
+      discord(p.owed ? `😏 **${C.name}** paid up: **${p.text}** ✅ (confirmed)` : `🎟️ **${C.name}** redeemed: **${p.text}** ✅ (confirmed)`);
+      c.innerHTML = `<div class="stamp big">${p.owed ? 'PAID' : 'REDEEMED'}<small>${new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</small></div><h3 style="margin:10px 0 4px">${esc(p.text)}</h3><button class="btn block" style="margin-top:12px">Done</button>`;
+      c.querySelector('.btn').onclick = close;
+    });
+  };
+  if (p.mystery && !p.used) {
+    c.innerHTML = `<div style="font-size:56px" class="shakeh">🎁</div><h2 style="margin:6px 0 4px">Mystery coupon…</h2><p class="muted" style="margin:0 0 12px">Ready to find out what's inside?</p><button class="btn block">Open it! 🎁</button><button class="btn ghost block" data-a="later" style="margin-top:8px">Not yet</button>`;
+    c.querySelector('[data-a=later]').onclick = () => m.remove();
+    c.querySelector('.btn').onclick = () => { p.mystery = false; p.opened = true; save(); confetti(120); buzz([20, 40, 20]); discord(`🎁 **${C.name}** opened her Mystery coupon: **${p.text}**`);
+      c.innerHTML = `<div style="font-size:48px">${esc(p.e || '🎟️')}</div><h2 style="margin:6px 0 4px">It's… ${esc(p.text)}!</h2><button class="btn block" style="margin-top:12px">Redeem it now</button><button class="btn ghost block" data-a="later" style="margin-top:8px">Keep it for later</button>`;
+      c.querySelector('[data-a=later]').onclick = close; c.querySelector('.btn').onclick = ask; };
+  } else ask();
 }
 
 
@@ -254,7 +304,7 @@ function saveSheet() {
     try {
       const data = await readSave(ta.value), sum = saveSummary(data.S);
       if (!confirm(`This will replace progress on this device with ${sum.n} done / ${money(sum.pot)}. Continue?`)) return;
-      Object.keys(S).forEach(k => delete S[k]); Object.assign(S, data.S); S.done ||= {}; S.prizes ||= []; S.prefs ||= {}; S.plan ||= {}; save();
+      Object.keys(S).forEach(k => delete S[k]); Object.assign(S, data.S); S.done ||= {}; S.prizes ||= []; S.prefs ||= {}; S.plan ||= {}; S.bonus ||= 0; S.plays ||= {}; save();
       msg.innerHTML = '<span style="color:var(--sage-3);font-weight:700">✅ Imported! Welcome back.</span>'; buzz([20, 40, 20]); setTimeout(close, 700);
     } catch (err) { msg.innerHTML = `<span style="color:var(--red);font-weight:600">${esc(err.message || 'Could not import that.')}</span>`; shake(ta); }
   };
