@@ -1,0 +1,45 @@
+/* ---------- audit pass: richer palette + fixes ---------- */
+.top h1{color:var(--forest)} .top h1 em{color:var(--sage-2)}
+.crumb{display:inline-flex;align-items:center;min-height:44px;padding:8px 2px;font-size:15px}
+.sechead .sem{background:#fff;box-shadow:var(--shadow);width:52px;height:52px;flex:0 0 52px;border-radius:16px;font-size:28px}
+.btn{background:var(--sage-3)} .btn:active{background:var(--forest)}
+.potcard{background:linear-gradient(135deg,#fffdf6 0%,#fbf1d9 55%,#f6e2b6 100%)!important;border:1px solid rgba(209,154,50,.25)}
+.potcard .serif{color:var(--forest)!important}
+.potcard .potbar i{background:linear-gradient(90deg,var(--sage-2),var(--gold))!important}
+.sc-games{background:linear-gradient(155deg,#eaf2e1,#cfe0bf)!important}
+.sc-pets{background:linear-gradient(155deg,#f7ece0,#e8cfb2)!important}
+.sc-us{background:linear-gradient(155deg,#fdece7,#f3cfc4)!important}
+.sc-jack{background:linear-gradient(155deg,#e6f0ef,#c7dcd8)!important}
+.sc-work{background:linear-gradient(155deg,#f3efe4,#e0d6bf)!important}
+.sc-family{background:linear-gradient(155deg,#f5ede2,#e9d7bd)!important}
+.sc-her{background:linear-gradient(155deg,#fbeaf0,#f0cfdc)!important}
+.sc-dares{background:linear-gradient(155deg,#fde9e2,#f2c2b2)!important}
+.sc-hunt{background:linear-gradient(155deg,#eef0e6,#d3dac0)!important}
+.sc-birthday{background:linear-gradient(155deg,#fbf2df,#f1dca8)!important}
+.sec2 b{color:var(--forest)}
+.navin button.on{background:var(--sage-3)!important;color:#fff!important}
+.savecard{margin-top:18px;border:1px dashed rgba(70,102,63,.35)}
+.savecard b{color:var(--forest)}
+.ptabs button{min-height:44px}
+.why a[data-a=skip]{display:inline-block;padding:12px 6px;margin:-12px -6px;font-weight:700}
+
+/* ---------- cloud: login gate, save pill, Jack bar ---------- */
+.gate{min-height:100vh;min-height:100dvh;display:grid;place-items:center;padding:24px 16px;background:radial-gradient(circle at 50% 15%,#eef2e8,#dfe7d5)}
+.gate-card{width:100%;max-width:380px;background:var(--card);border-radius:24px;box-shadow:0 16px 40px rgba(47,58,44,.16);padding:28px 22px}
+.gate-spin{font-size:46px;animation:float 1.6s ease-in-out infinite}
+.pin-dots{display:flex;gap:14px;justify-content:center;margin:6px 0}
+.pin-dots i{width:16px;height:16px;border-radius:50%;border:2px solid var(--sage-2);transition:background .15s}
+.pin-dots i.on{background:var(--sage-3);border-color:var(--sage-3)}
+.keypad{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:8px}
+.key{height:62px;border-radius:18px;background:var(--sage-mist);font-size:24px;font-weight:700;color:var(--ink);-webkit-user-select:none;user-select:none}
+.key:active{transform:scale(.95);background:var(--sage-soft)}
+.key.blank{visibility:hidden}
+#cloud-pill{position:fixed;right:12px;bottom:calc(84px + env(safe-area-inset-bottom));z-index:45;background:var(--card);color:var(--sage-3);font-size:12px;font-weight:700;padding:6px 12px;border-radius:999px;box-shadow:var(--shadow);transition:opacity .6s}
+#cloud-pill.fade{opacity:0}
+#cloud-pill.warn{color:var(--red)}
+.jackbar{position:sticky;top:0;z-index:50;display:flex;gap:8px;align-items:center;justify-content:center;flex-wrap:wrap;background:#2f3a2c;color:#e4ebdb;font-size:13px;font-weight:600;padding:8px 12px}
+.jackbar button{background:#566f4c;color:#fff;border-radius:999px;padding:6px 12px;font-size:12.5px;font-weight:700;min-height:34px}
+.upgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.upitem{display:flex;flex-direction:column;gap:2px;align-items:flex-start;text-align:left;background:var(--sage-mist);border-radius:12px;padding:10px;min-height:44px}
+.upitem span{font-size:22px}.upitem b{font-size:13px}.upitem small{font-size:11px;color:var(--muted)}
+.upimg{width:100%;border-radius:12px;box-shadow:var(--shadow);grid-column:1/-1}
