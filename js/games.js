@@ -565,7 +565,7 @@ function gWheel(t, g, done, ctx) {
       if (s.again) { b.disabled = false; b.textContent = 'Spin again! 🎡 (free spin)'; buzz(15); g.querySelector('.after').innerHTML = '<div class="fun" style="text-align:center">🔁 Spin again! This one doesn\'t count.</div>'; return; }
       const got = awardPool(s, t.title); save();
       const label = got || (s.money ? 'Not a winner (pot bonus maxed out)' : 'Not a winner ❌');
-      if (got) { buzz([20, 40, 20]); confetti(80); } else buzz([30, 30, 30]);
+      if (got && !(s.money < 0)) { buzz([20, 40, 20]); confetti(80); } else buzz([30, 30, 30]);
       g.querySelector('.after').innerHTML = `<div class="coupon" style="text-align:center"><span class="small muted">THE WHEEL HAS SPOKEN</span><b style="font-size:20px">${esc(label)}</b></div><button class="btn block">${ctx ? 'Done' : 'Claim it'}</button>`; b.remove();
       g.querySelector('.after .btn').onclick = () => ctx ? ctx.finish(got ? [got] : [], `${s.e || ''} ${s.l}`) : done(1, { text: `🎡 Wheel spin 1/${replayMax(t)}: **${s.l}**`, msg: got ? `You won: ${got}. You've got ${replayMax(t) - 1} more spins! 🔁` : `Not a winner this time… but you've got ${replayMax(t) - 1} more spins! 🔁` });
     }, 4700);
@@ -634,5 +634,163 @@ function gOrder(t, g, done) {
     };
   };
   draw();
+}
+
+// ===== Jack's Casino: she bets from her pot (max £10 a go). Stake comes off when the go starts, winnings go on when it ends.
+const CHIPS = [1, 2, 5, 10];
+const half = n => Math.floor(n * 2 + 1e-9) / 2;                       // whole £ or 50p, always rounded down
+function casinoStart(t, stake) {
+  S.casino ||= { net: 0, goes: 0, won: 0, lost: 0 };
+  S.casino.net -= stake; S.casino.goes++; save();
+}
+// payout = what comes back (0 = lost the stake). Returns what was actually paid (the pot never goes past the cap).
+function casinoEnd(t, stake, payout, what) {
+  const room = Math.max(0, C.cap - rawEarned());
+  const paid = Math.min(half(payout), room);
+  S.casino.net += paid; const d = paid - stake;
+  if (d > 0) S.casino.won += d; else S.casino.lost += -d;
+  S.casino.log = [{ at: Date.now(), g: t.title, stake, paid, what }, ...(S.casino.log || [])].slice(0, 60);
+  save();
+  const sign = d > 0 ? `won **+${money(d)}** 🤑` : d === 0 ? 'got her stake back 😅' : `lost **${money(-d)}** 😈`;
+  discord(`🎰 **${C.name}** bet ${money(stake)} on **${t.title}** and ${sign}${what ? ` (${what})` : ''}\n_Casino overall: ${S.casino.net >= 0 ? '+' : '−'}${money(Math.abs(S.casino.net))} over ${S.casino.goes} goes · pot ${money(earned())}_`);
+  return paid;
+}
+const CTYPES = { cups: cCups, double: cDouble, hilo: cHilo, cscratch: cScratch, cwheel: cWheel };
+function gCasino(t, g, close) {
+  let stake = 0, inGo = false, leave = null;
+  const sheet = g.closest('.sheet'); if (sheet) sheet._leave = () => { if (inGo && leave) leave(); };
+  const top = h(`<div class="cbar"><div><span class="small muted">YOUR POT</span><b class="cpot"></b></div><div style="text-align:right"><span class="small muted">CASINO SO FAR</span><b class="cnet"></b></div></div>`);
+  const pick = h(`<div class="card"><b>Pick your bet</b><div class="small muted" style="margin:2px 0 8px">Max £10 a go. It comes out of your holiday pot. Gamble responsibly-ish. 😂</div><div class="cchips"></div><button class="btn block" data-a="go" disabled style="margin-top:12px">Choose a bet</button></div>`);
+  const area = h('<div class="carea"></div>');
+  g.append(top, pick, area);
+  const refresh = () => {
+    const n = (S.casino && S.casino.net) || 0;
+    top.querySelector('.cpot').textContent = money(earned());
+    top.querySelector('.cnet').textContent = (n > 0 ? '+' : n < 0 ? '−' : '') + money(Math.abs(n));
+    top.querySelector('.cnet').style.color = n > 0 ? 'var(--sage-3)' : n < 0 ? 'var(--red)' : '';
+    const cc = pick.querySelector('.cchips'); cc.innerHTML = '';
+    (t.chips || CHIPS).forEach(v => { const b = h(`<button class="cchip ${stake === v ? 'on' : ''}">£${v}</button>`); b.disabled = v > earned(); b.onclick = () => { stake = v; buzz(6); refresh(); }; cc.appendChild(b); });
+    if (stake > earned()) stake = 0;
+    const go = pick.querySelector('[data-a=go]'); go.disabled = !stake; go.textContent = stake ? `Bet £${stake} ${t.verb || "Let's go"} 🎲` : (earned() < 1 ? 'Your pot needs at least £1' : 'Choose a bet');
+  };
+  const again = (msg, good) => {
+    refresh();
+    const a = h(`<div class="card center cres ${good ? 'good' : ''}"><div class="cresmsg">${msg}</div><div class="row" style="gap:8px;margin-top:12px"><button class="btn ghost" style="flex:1" data-a="out">Leave the casino</button><button class="btn" style="flex:1" data-a="more">Play again 🎲</button></div></div>`);
+    area.appendChild(a); a.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    a.querySelector('[data-a=out]').onclick = close;
+    a.querySelector('[data-a=more]').onclick = () => { area.innerHTML = ''; pick.style.display = ''; refresh(); scrollTo(0, 0); g.closest('.sheet')?.scrollTo(0, 0); };
+  };
+  pick.querySelector('[data-a=go]').onclick = () => {
+    if (!stake || stake > earned()) return;
+    casinoStart(t, stake); inGo = true; leave = null; pick.style.display = 'none'; area.innerHTML = ''; refresh(); buzz(10);
+    CTYPES[t.type](t, area, stake, (payout, what, extra) => {
+      if (!inGo) return; inGo = false;
+      const paid = casinoEnd(t, stake, payout, what), d = paid - stake;
+      if (d > 0) { confetti(d >= stake * 3 ? 160 : 80); buzz([20, 40, 20]); } else if (d < 0) buzz([40, 30, 40]);
+      if (!sheet || !sheet.isConnected) return;
+      again(`${extra ? `<div style="margin-bottom:8px">${extra}</div>` : ''}${d > 0 ? `<div class="won">+${money(d)}</div><p style="margin:0">You turned £${stake} into ${money(paid)}! 🤑</p>` : d === 0 ? `<b>Stake back, no harm done 😅</b>` : `<div class="lost">−${money(-d)}</div><p style="margin:0" class="muted">${extra && extra.includes('🎟️') ? 'Swapped for a coupon. Worth it? 😏' : paid > 0 ? `You got ${money(paid)} back.` : 'Jack takes it. 😈'}</p>`}`, d > 0);
+    }, fn => { leave = fn; });
+  };
+  refresh();
+}
+// --- Pick a Cup: 3 cups, one hides the cash. Pays 2.8x.
+function cCups(t, a, stake, end, onLeave) {
+  const pay = t.pays || 2.8, win = rnd(3); onLeave(() => end(stake, 'left before picking a cup (stake back)'));
+  a.innerHTML = `<div class="card center"><b>Watch the cups… then pick one</b><div class="small muted" style="margin-top:2px">Find the 💷 and win ${money(half(stake * pay))}</div><div class="cups"><button class="cup">🥤</button><button class="cup">🥤</button><button class="cup">🥤</button></div></div>`;
+  const cups = [...a.querySelectorAll('.cup')]; cups.forEach(c => c.disabled = true);
+  let n = 0; const shuf = setInterval(() => { cups.forEach(c => c.classList.remove('jig')); cups[rnd(3)].classList.add('jig'); buzz(4); if (++n > 7) { clearInterval(shuf); cups.forEach(c => { c.classList.remove('jig'); c.disabled = false; }); } }, 260);
+  cups.forEach((c, i) => c.onclick = () => {
+    cups.forEach(x => x.disabled = true); onLeave(() => end(i === win ? stake * pay : 0, i === win ? 'found the cash 💷' : 'wrong cup'));
+    cups.forEach((x, j) => { x.classList.add('up'); x.innerHTML = `🥤<span>${j === win ? '💷' : '💨'}</span>`; if (j === i) x.classList.add('mine'); });
+    setTimeout(() => end(i === win ? stake * pay : 0, i === win ? 'found the cash 💷' : 'wrong cup'), 900);
+  });
+}
+// --- Double or Nothing: flip to double what's on the line, or bank it. 4% chance the coin lands on its edge = Jack wins.
+function cDouble(t, a, stake, end, onLeave) {
+  const MAX = t.maxFlips || 5, EDGE = t.edge ?? 4; let line = stake, flips = 0;
+  onLeave(() => end(line, flips ? `left the table, banked ${money(line)}` : 'left before flipping (stake back)'));
+  const draw = msg => {
+    a.innerHTML = `<div class="card center"><div class="small muted">ON THE LINE</div><div class="won" style="margin:2px 0">${money(line)}</div><div class="coin">${msg || '🪙'}</div><p class="small muted" style="margin:6px 0 10px">Call it. Win and it doubles to ${money(line * 2)}. Lose and it's gone. ${flips ? `Flip ${flips + 1} of ${MAX}.` : ''}</p><div class="row" style="gap:8px"><button class="btn" style="flex:1" data-c="h">🌿 Heads</button><button class="btn" style="flex:1" data-c="t">🧔 Tails</button></div>${flips ? `<button class="btn ghost block" style="margin-top:8px" data-a="bank">Bank ${money(line)} 💰</button>` : ''}<p class="small muted" style="margin:10px 0 0">House rule: if the coin lands on its edge (or Jack sneezes), Jack wins. 🙃</p></div>`;
+    a.querySelectorAll('[data-c]').forEach(b => b.onclick = () => flip(b.dataset.c));
+    const bk = a.querySelector('[data-a=bank]'); if (bk) bk.onclick = () => end(line, `banked after ${flips} flip${flips === 1 ? '' : 's'}`);
+  };
+  const flip = call => {
+    a.querySelectorAll('button').forEach(b => b.disabled = true); const coin = a.querySelector('.coin'); coin.classList.add('spin'); buzz(8);
+    let landed = false; const resolve = () => { if (landed) return; landed = true; onLeave(() => end(line, `left the table, banked ${money(line)}`));
+      const r = rnd(100), side = r < EDGE ? 'edge' : (r % 2 ? 'h' : 't');
+      if (side === call) { line *= 2; flips++; buzz(15); if (flips >= MAX) return end(line, `${flips} flips in a row! 🔥`, '🔥 Max flips! Banked automatically.'); draw(side === 'h' ? '🌿' : '🧔'); }
+      else end(0, side === 'edge' ? 'coin landed on its EDGE' : `lost on flip ${flips + 1}`, side === 'edge' ? '😱 It landed on its EDGE. Jack wins!' : `It was ${side === 'h' ? '🌿 Heads' : '🧔 Tails'}.`);
+    };
+    onLeave(resolve); setTimeout(resolve, 900);
+  };
+  draw();
+}
+// --- Higher or Lower: each right call multiplies what's on the line by fair odds minus 5%. Same card = Jack wins.
+function cHilo(t, a, stake, end, onLeave) {
+  const NM = ['', 'A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'], SU = ['♥', '♦', '♣', '♠'], MAX = t.maxCards || 8;
+  let v = 1 + rnd(13), su = rnd(4), mult = 1, calls = 0;
+  onLeave(() => end(stake * mult, calls ? `left the table, banked ×${Math.round(mult * 100) / 100}` : 'left before playing (stake back)'));
+  const card = (x, s) => `<div class="hcard ${s < 2 ? 'red' : ''}"><b>${NM[x]}</b><span>${SU[s]}</span></div>`;
+  const odds = up => { const p = (up ? 13 - v : v - 1) / 13; return p ? Math.round((t.factor || 0.95) / p * 100) / 100 : 0; };
+  const draw = (prev) => {
+    const hi = odds(true), lo = odds(false), cash = half(stake * mult);
+    a.innerHTML = `<div class="card center"><div class="hrow">${prev || ''}${card(v, su)}</div><div class="small muted" style="margin:8px 0 2px">ON THE LINE</div><div class="won" style="margin:0">${money(cash)}</div><p class="small muted" style="margin:4px 0 10px">Will the next card be higher or lower? Same card = Jack wins.</p><div class="row" style="gap:8px"><button class="btn" style="flex:1" data-u="1" ${hi ? '' : 'disabled'}>⬆️ Higher<br><small>×${hi || '–'}</small></button><button class="btn" style="flex:1" data-u="0" ${lo ? '' : 'disabled'}>⬇️ Lower<br><small>×${lo || '–'}</small></button></div>${calls ? `<button class="btn ghost block" style="margin-top:8px" data-a="bank">Bank ${money(cash)} 💰</button>` : ''}</div>`;
+    a.querySelectorAll('[data-u]').forEach(b => b.onclick = () => go(b.dataset.u === '1'));
+    const bk = a.querySelector('[data-a=bank]'); if (bk) bk.onclick = () => end(stake * mult, `banked after ${calls} right call${calls === 1 ? '' : 's'} (×${Math.round(mult * 100) / 100})`);
+  };
+  const go = up => {
+    const m = odds(up), n = 1 + rnd(13), ns = rnd(4), ok = up ? n > v : n < v, prev = card(v, su), ov = v;
+    v = n; su = ns; buzz(8);
+    if (!ok) return end(0, `wrong call on card ${calls + 2}`, `<div class="hrow">${prev}${card(n, ns)}</div><div style="margin-top:6px">${n === ov ? 'Same card. Jack wins! 😈' : 'Wrong call!'}</div>`);
+    mult *= m; calls++;
+    if (calls >= MAX - 1) return end(stake * mult, `${calls} right calls in a row 🔥`, `<div class="hrow">${prev}${card(n, ns)}</div><div style="margin-top:6px">🔥 ${calls} right in a row! Banked automatically.</div>`);
+    draw(`<div class="hcard old">${prev.replace(/^<div class="hcard[^"]*">/, '').replace(/<\/div>$/, '')}</div>`);
+  };
+  draw();
+}
+// --- paid scratchcard: the result is drawn first (from the card's prize table), then the card is built to show it.
+function cScratch(t, a, stake, end, onLeave) {
+  const tab = t.table, tot = tab.reduce((x, r) => x + r.w, 0); let r = rnd(tot), res = tab[0];
+  for (const row of tab) { if ((r -= row.w) < 0) { res = row; break; } }
+  const syms = tab.filter(x => x.sym).map(x => x.sym), grid = [];
+  if (res.sym) { grid.push(res.sym, res.sym, res.sym); }
+  const pool = syms.filter(s => s !== res.sym); const cnt = {};
+  while (grid.length < 9) { const s = pool[rnd(pool.length)]; if ((cnt[s] || 0) < 2) { cnt[s] = (cnt[s] || 0) + 1; grid.push(s); } }
+  for (let i = grid.length - 1; i > 0; i--) { const j = rnd(i + 1); [grid[i], grid[j]] = [grid[j], grid[i]]; }
+  a.innerHTML = `<div class="card center"><b>${esc(t.cardName || 'Scratch 3 the same to win')}</b><div class="small muted" style="margin:2px 0 8px">Tap each square to scratch it</div><div class="cscr">${grid.map((s, i) => `<button class="cs" data-i="${i}"><span>${s}</span></button>`).join('')}</div><button class="btn ghost block" data-a="all" style="margin-top:10px">Scratch them all</button><div class="ctable small muted">${tab.filter(x => x.sym && x.w).map(x => `<span>${x.sym}${x.sym}${x.sym} ${x.coupon ? '🎟️ coupon' : '×' + x.m}</span>`).join('')}</div></div>`;
+  let left = 9, fin = false;
+  onLeave(() => finish(true));
+  const finish = now => {
+    if (fin) return; fin = true;
+    let what = res.sym ? `${res.sym}${res.sym}${res.sym}` : 'no match', extra = '';
+    if (res.coupon) { const got = awardPool(pickPool(p => !p.lose && !p.again && !p.money), t.title); save(); extra = got ? `🎟️ Plus a coupon: <b>${esc(got)}</b>` : ''; what += got ? ` + coupon: ${got}` : ''; }
+    if (now === true) end(stake * (res.m || 0), what + ' (left before scratching it all)', extra); else setTimeout(() => end(stake * (res.m || 0), what, extra), 500);
+  };
+  const scr = b => { if (b.classList.contains('off')) return; b.classList.add('off'); buzz(4); if (--left === 0) finish(); };
+  a.querySelectorAll('.cs').forEach(b => b.onclick = () => scr(b));
+  a.querySelector('[data-a=all]').onclick = () => a.querySelectorAll('.cs').forEach(scr);
+}
+// --- paid wheel: equal slices, so what you see is the real odds.
+function cWheel(t, a, stake, end, onLeave) {
+  onLeave(() => end(stake, 'left before spinning (stake back)'));
+  const segs = t.segs, n = segs.length, R = 150, cols = ['#9caf88', '#e9b8a9', '#d9a94a', '#7f9a72', '#f2cfc4', '#b9c9a8', '#ecc777', '#c9d6bb'];
+  const lab = s => s.coupon ? '🎟️ Coupon' + (s.m ? ` +×${s.m}` : '') : s.m ? `${s.e || ''}×${s.m}` : '❌';
+  const paths = segs.map((s, k) => {
+    const a0 = (k / n) * 2 * Math.PI - Math.PI / 2, a1 = ((k + 1) / n) * 2 * Math.PI - Math.PI / 2, am = (a0 + a1) / 2;
+    const x0 = R + R * Math.cos(a0), y0 = R + R * Math.sin(a0), x1 = R + R * Math.cos(a1), y1 = R + R * Math.sin(a1), tx = R + R * .64 * Math.cos(am), ty = R + R * .64 * Math.sin(am);
+    return `<path d="M${R},${R} L${x0},${y0} A${R},${R} 0 0 1 ${x1},${y1} Z" fill="${!s.m && !s.coupon ? '#d8d6cc' : s.m >= 10 ? '#566f4c' : cols[k % cols.length]}" stroke="#fffdf8" stroke-width="2"/><text x="${tx}" y="${ty}" transform="rotate(${am * 180 / Math.PI} ${tx} ${ty})" text-anchor="middle" dominant-baseline="middle" font-size="${n > 14 ? 10 : 12}" font-weight="800" fill="${s.m >= 10 ? '#fff' : '#2f3a2c'}" font-family="DM Sans">${esc(lab(s))}</text>`;
+  }).join('');
+  a.innerHTML = `<div class="card center"><div class="small muted">Stake ${money(stake)} · ×2 = ${money(stake * 2)} back</div><div class="wheelwrap"><div class="pointer"></div><svg viewBox="0 0 300 300">${paths}<circle cx="150" cy="150" r="22" fill="#fffdf8"/><text x="150" y="152" text-anchor="middle" dominant-baseline="middle" font-size="20">🎰</text></svg></div><button class="btn block">Spin! 🎡</button></div>`;
+  const svg = a.querySelector('svg'), b = a.querySelector('.btn');
+  b.onclick = () => {
+    b.disabled = true; const k = rnd(n), s = segs[k];
+    svg.style.transform = `rotate(${360 * 6 + (360 - (k + .5) * (360 / n))}deg)`; buzz(10);
+    let doneW = false; const land = () => { if (doneW) return; doneW = true;
+      let extra = '', what = lab(s);
+      if (s.coupon) { const got = awardPool(pickPool(p => !p.lose && !p.again && !p.money), t.title); save(); if (got) { extra = `🎟️ You won a coupon: <b>${esc(got)}</b>`; what += `: ${got}`; } }
+      b.remove(); end(stake * (s.m || 0), what, extra);
+    };
+    onLeave(land); setTimeout(land, 4700);
+  };
 }
 

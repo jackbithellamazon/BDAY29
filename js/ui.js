@@ -61,6 +61,7 @@ const SECT = [
   ['dares', '🔥', 'Dares', 'Do it, then I give you a code. Swap any you like'],
   ['hunt', '🗝️', 'Finds & Mysteries', 'Hidden notes, secret codes and a mystery parcel'],
   ['birthday', '🎂', 'Dream Birthday', 'Help me plan your 30th (any answer wins)'],
+  ['casino', '🎰', "Jack's Casino", 'Bet your pot (max £10 a go): win big, or lose it'],
 ];
 function lockBanner(w) {
   if (!S.locked) return;
@@ -75,23 +76,24 @@ function renderHome(w) {
     const S0 = SECT.find(x => x[0] === cat) || ['', '', cat, ''];
     const ts = tasks.filter(t => t.cat === cat).sort((x, y) => ((!!S.done[x.id]) - (!!S.done[y.id])) || ((!!x.last) - (!!y.last)));
     const back = h(`<button class="crumb">← All sections</button>`); back.onclick = () => { cat = null; render(); scrollTo(0, 0); }; w.appendChild(back);
-    w.appendChild(h(`<div class="sechead"><span class="sem">${S0[1]}</span><div><h2>${esc(S0[2])}</h2><div class="small muted">${ts.filter(t => S.done[t.id]).length} of ${ts.length} done · ${esc(S0[3])}</div></div></div>`));
+    w.appendChild(h(`<div class="sechead"><span class="sem">${S0[1]}</span><div><h2>${esc(S0[2])}</h2><div class="small muted">${cat === 'casino' ? '' : `${ts.filter(t => S.done[t.id]).length} of ${ts.length} done · `}${esc(S0[3])}</div></div></div>`));
     const list = h('<div class="rows"></div>');
     ts.forEach(t => {
       const d = S.done[t.id], wait = waiting(t), rw = ['done', 'reverse', 'code', 'qr', 'naughtynice'].includes(t.type), big = (t.amount || 0) >= 25;
-      const b = h(`<button class="trow ${d ? 'done' : ''}"><span class="em">${ico(t.emoji)}</span><span class="tt"><b>${esc(t.title)}</b><span class="tags">${t.draft ? '<i class="tag dark">DRAFT</i>' : ''}${wait ? `<i class="tag">${esc(t.afterNote || '🔒 Unlocks after the others')}</i>` : ''}${rw ? '<i class="tag">🚶 Real world</i>' : ''}${d ? `<i class="tag gold">+${money(won(t))}</i>` : ''}${d && t.replay && playsLeft(t) ? `<i class="tag">🔁 ${t.replay.max ? `${playsLeft(t)} ${t.type === 'wheel' ? 'spins' : 'plays'} left` : 'Play again'}</i>` : ''}${t.optional ? '<i class="tag">Optional</i>' : ''}</span></span><span class="st">${d ? (t.replay && playsLeft(t) ? '🔁' : '✓') : '›'}</span></button>`);
+      const b = h(`<button class="trow ${d ? 'done' : ''}"><span class="em">${ico(t.emoji)}</span><span class="tt"><b>${esc(t.title)}</b><span class="tags">${t.draft ? '<i class="tag dark">DRAFT</i>' : ''}${wait ? `<i class="tag">${esc(t.afterNote || '🔒 Unlocks after the others')}</i>` : ''}${rw ? '<i class="tag">🚶 Real world</i>' : ''}${d ? `<i class="tag gold">+${money(won(t))}</i>` : ''}${d && t.replay && playsLeft(t) ? `<i class="tag">🔁 ${t.replay.max ? `${playsLeft(t)} ${t.type === 'wheel' ? 'spins' : 'plays'} left` : 'Play again'}</i>` : ''}${t.optional ? '<i class="tag">Optional</i>' : ''}${t.casino ? `<i class="tag gold">🎲 Bet ${t.chips ? '£' + t.chips.join(' or £') : '£1 to £10'}</i>` : ''}</span></span><span class="st">${d ? (t.replay && playsLeft(t) ? '🔁' : '✓') : '›'}</span></button>`);
       b.onclick = () => { if ((S.locked || wait) && !d) { b.classList.add('shake'); setTimeout(() => b.classList.remove('shake'), 400); return; } openTask(t); }; if ((S.locked || wait) && !d) b.classList.add('locked'); list.appendChild(b);
     });
     w.appendChild(list);
     return;
   }
-  const pool = tasks.filter(t => !S.done[t.id] && !t.draft && !waiting(t));
+  const pool = tasks.filter(t => !S.done[t.id] && !t.draft && !t.casino && !waiting(t));
   if (pool.length && !S.locked) { const sp = h(`<button class="surprise">🎲 Surprise me: pick a random challenge</button>`); sp.onclick = () => { buzz(10); openTask(pool[Math.floor(Math.random() * pool.length)]); }; w.appendChild(sp); }
   w.appendChild(h(`<div class="sect" style="margin-top:6px">Pick a section</div>`));
   const grid = h('<div class="secs2"></div>');
   SECT.forEach(([k, em, name, desc], i) => {
     const ts = tasks.filter(t => t.cat === k); if (!ts.length) return;
-    const dn = ts.filter(t => S.done[t.id]).length, all = dn === ts.length, got = ts.reduce((x, t) => x + won(t), 0);
+    const dn = ts.filter(t => S.done[t.id]).length, all = dn === ts.length && k !== 'casino', got = ts.reduce((x, t) => x + won(t), 0);
+    if (k === 'casino') { const cn = (S.casino && S.casino.net) || 0; const b = h(`<button class="sec2 sc-casino"><span class="sem2">${em}</span><b>${esc(name)}</b><span class="sdesc">${esc(desc)}</span><span class="sfoot"><span class="sgot ${cn < 0 ? 'neg' : cn ? '' : 'muted'}">${S.casino && S.casino.goes ? `${cn >= 0 ? '+' : '−'}${money(Math.abs(cn))} so far` : `${ts.length} games`}</span></span></button>`); b.onclick = () => { cat = k; buzz(6); render(); scrollTo(0, 0); }; grid.appendChild(b); return; }
     const b = h(`<button class="sec2 sc-${k} ${all ? 'done' : ''}"><span class="sem2">${em}</span><b>${esc(name)}</b><span class="sdesc">${esc(desc)}</span><span class="sfoot"><span class="ring" style="--p:${dn / ts.length * 100}"><i>${all ? '✓' : dn + '/' + ts.length}</i></span>${got ? `<span class="sgot">+${money(got)}</span>` : `<span class="sgot muted">${ts.length} to do</span>`}</span></button>`);
     b.onclick = () => { cat = k; buzz(6); render(); scrollTo(0, 0); }; grid.appendChild(b);
   });
@@ -107,11 +109,12 @@ function openTask(t) {
     <div class="taskhero"><div class="emwrap sc-${t.cat}"><span class="em">${ico(t.emoji)}</span></div><h2>${esc(t.title)}</h2>${t.intro ? `<p>${esc(t.intro)}</p>` : ''}${t.pref ? `<p class="prefnote">${esc(C.prefNote)}</p>` : ''}</div><div class="game"></div></div></div>`);
   document.body.appendChild(sh); document.body.style.overflow = 'hidden';
   let closed = false;
-  const close = () => { if (closed) return; closed = true; sh.remove(); document.body.style.overflow = ''; removeEventListener('popstate', onPop); if (history.state?.sheet) history.back(); render(); };
-  const onPop = () => { if (!closed) { closed = true; sh.remove(); document.querySelector('.modal')?.remove(); document.body.style.overflow = ''; render(); } };
+  const close = () => { if (closed) return; closed = true; try { sh._leave && sh._leave(); } catch {} sh.remove(); document.body.style.overflow = ''; removeEventListener('popstate', onPop); if (history.state?.sheet) history.back(); render(); };
+  const onPop = () => { if (!closed) { closed = true; try { sh._leave && sh._leave(); } catch {} sh.remove(); document.querySelector('.modal')?.remove(); document.body.style.overflow = ''; render(); } };
   history.pushState({ sheet: 1 }, ''); addEventListener('popstate', onPop);
   sh.querySelector('.back').onclick = close;
   const g = sh.querySelector('.game');
+  if (t.casino) return gCasino(t, g, close);
   const prev = S.done[t.id];
   if (prev && !t.pref && t.replay) {
     const fnR = { match3: gMatch3, wheel: gWheel, redblack: gRedBlack }[t.type];
@@ -277,7 +280,7 @@ async function autoBackup(why) {
     S.lastBackup = Date.now(); save();
   } catch {}
 }
-const saveSummary = st => { const ids = Object.keys(st.done || {}); const pot = scored().reduce((x, t) => x + (st.done?.[t.id] ? Math.floor((t.amount || 0) * st.done[t.id].frac * 2) / 2 : 0), 0); return { n: ids.filter(id => scored().some(t => t.id === id)).length, pot }; };
+const saveSummary = st => { const ids = Object.keys(st.done || {}); const pot = scored().reduce((x, t) => x + (st.done?.[t.id] ? Math.floor((t.amount || 0) * st.done[t.id].frac * 2) / 2 : 0), 0) + ((st.casino && st.casino.net) || 0); return { n: ids.filter(id => scored().some(t => t.id === id)).length, pot }; };
 function saveSheet() {
   const sh = h(`<div class="sheet"><div class="wrap"><div class="sheethead"><button class="back">←</button><span class="pill">💾 Save &amp; move devices</span></div>
     <div class="card"><b>1. Export from this device</b><p class="small muted" style="margin:6px 0 12px;line-height:1.5">Makes a save code with everything: challenges done, your pot, coupons, answers and your trip plan. A backup copy goes to ${esc(C.from)} too.</p>

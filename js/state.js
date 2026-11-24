@@ -13,19 +13,20 @@ const save = () => { if (resetting) return; S.savedAt = Date.now(); try { localS
 setTimeout(() => { try { SECT.forEach(([k, em, name]) => { CATS[k] = em + ' ' + name; }); } catch {} }, 0);
 const waiting = t => !!(t.after && t.after.some(id => !S.done[id] && G.tasks.some(x => x.id === id && !x.draft)));
 const live = () => G.tasks.filter(t => TEST || !t.draft);
-const scored = () => live().filter(t => !t.draft);
+const scored = () => live().filter(t => !t.draft && !t.casino);
 const doneCount = () => scored().filter(t => S.done[t.id]).length;
 const finaleOpen = () => scored().every(t => S.done[t.id]);
 const won = t => S.done[t.id] ? Math.floor((t.amount || 0) * S.done[t.id].frac * 2) / 2 : 0;
 function rnd(n) { const b = new Uint32Array(1), lim = Math.floor(4294967296 / n) * n; let x; do { crypto.getRandomValues(b); x = b[0]; } while (x >= lim); return x % n; }  // unbiased 0..n-1
 const BONUS_CAP = 30;
-const earned = () => scored().reduce((a, t) => a + won(t), 0) + Math.min(BONUS_CAP, S.bonus || 0);
+const rawEarned = () => scored().reduce((a, t) => a + won(t), 0) + Math.min(BONUS_CAP, S.bonus || 0) + ((S.casino && S.casino.net) || 0);
+const earned = () => Math.max(0, Math.min(C.cap, rawEarned()));   // casino wins and losses included
 const POOL = () => (G && G.prizePool) || [];
 const pickPool = (filter = p => !p.lose && !p.again) => { const L = POOL().filter(filter), w = L.map(p => p.rare ? 1 : 6), tot = w.reduce((x, y) => x + y, 0); let r = rnd(tot); for (let i = 0; i < L.length; i++) { if ((r -= w[i]) < 0) return L[i]; } return L[0]; };
 // give her a pool prize: coupons go to Coupons, £5 goes to the pot (until the £30 bonus cap). Returns text, or null = not a winner.
 function awardPool(p, from) {
   if (!p || p.lose || p.again) return null;
-  if (p.money) { if ((S.bonus || 0) + p.money > BONUS_CAP) return null; S.bonus = (S.bonus || 0) + p.money; return `+${money(p.money)} for your holiday pot 💷`; }
+  if (p.money) { if ((S.bonus || 0) + p.money > BONUS_CAP) return null; S.bonus = (S.bonus || 0) + p.money; if (p.money < 0) discord(`💸 **${C.name}** lost ${money(-p.money)} on ${from} 😈`); return p.money < 0 ? `−${money(-p.money)} from your holiday pot 😈` : `+${money(p.money)} for your holiday pot 💷`; }
   const text = p.prize || p.l, mystery = !p.forfeit && rnd(100) < 15;
   S.prizes.push({ id: from + '-' + Date.now() + '-' + rnd(1000000), text, e: p.e || '', from, used: false, owed: !!p.forfeit, jack: !!p.jack, size: p.size || '', mystery, at: Date.now() });
   if (mystery) discord(`🎁 **${C.name}** won a sealed Mystery coupon: **${text}** (she finds out when she redeems it)`);
