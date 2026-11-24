@@ -19,8 +19,11 @@ const finaleOpen = () => scored().every(t => S.done[t.id]);
 const won = t => S.done[t.id] ? Math.floor((t.amount || 0) * S.done[t.id].frac * 2) / 2 : 0;
 function rnd(n) { const b = new Uint32Array(1), lim = Math.floor(4294967296 / n) * n; let x; do { crypto.getRandomValues(b); x = b[0]; } while (x >= lim); return x % n; }  // unbiased 0..n-1
 const BONUS_CAP = 30;
-const rawEarned = () => scored().reduce((a, t) => a + won(t), 0) + Math.min(BONUS_CAP, S.bonus || 0) + ((S.casino && S.casino.net) || 0);
-const earned = () => Math.max(0, Math.min(C.cap, rawEarned()));   // casino wins and losses included
+const hintCut = (lo = .08, hi = .22) => lo + rnd(1001) / 1000 * (hi - lo);   // each hint knocks a random 8-22% off that challenge
+const rawEarned = () => scored().reduce((a, t) => a + won(t), 0) + Math.min(BONUS_CAP, S.bonus || 0) + ((S.casino && S.casino.net) || 0) + (window.SHOW_POT || 0);
+const OVER = () => (C.overCap ?? 100);   // casino profit can push her past the budget, up to this much (super rare: she'd need to finish nearly everything AND be ahead at the casino)
+const potLimit = () => C.cap + Math.max(0, Math.min(OVER(), (S.casino && S.casino.net) || 0));
+const earned = () => Math.max(0, Math.min(potLimit(), rawEarned()));   // casino wins and losses included
 const POOL = () => (G && G.prizePool) || [];
 const pickPool = (filter = p => !p.lose && !p.again) => { const L = POOL().filter(filter), w = L.map(p => p.rare ? 1 : 6), tot = w.reduce((x, y) => x + y, 0); let r = rnd(tot); for (let i = 0; i < L.length; i++) { if ((r -= w[i]) < 0) return L[i]; } return L[0]; };
 // give her a pool prize: coupons go to Coupons, £5 goes to the pot (until the £30 bonus cap). Returns text, or null = not a winner.

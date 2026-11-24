@@ -1,7 +1,7 @@
 /* Becki's Birthday Getaway: games. Public engine code only; all content, answers and keys live privately in Supabase. */
 /* ---------- challenge types ---------- */
 function gAnswer(t, g, done) {
-  let used = 0, wrong = 0;
+  let cutTot = 0, used = 0, wrong = 0;
   const tries = t.tries || 1;
   const right = t.need ? t.need.map(n => n[0]).join(' + ') : (t.answers[0] || '');
   const nice = s => s.charAt(0).toUpperCase() + s.slice(1);
@@ -9,7 +9,7 @@ function gAnswer(t, g, done) {
   const inp = g.querySelector('input'), after = g.querySelector('.after'); inp.focus();
   const go = () => {
     const v = inp.value.trim(); if (!v) return;
-    if (t.need ? hasAll(v, t.need) : matches(v, t.answers)) { buzz(12); return done(Math.max(.4, 1 - used * .2), { text: `Answer: "${v}"${used ? ` (${used} hint${used > 1 ? 's' : ''})` : ''}`, msg: t.fun || undefined }); }
+    if (t.need ? hasAll(v, t.need) : matches(v, t.answers)) { buzz(12); return done(Math.max(.35, 1 - cutTot), { text: `Answer: "${v}"${used ? ` (${used} hint${used > 1 ? 's' : ''})` : ''}`, msg: t.fun || undefined }); }
     const sp = (t.special || []).find(s => s.answers.some(x => squash(x) === squash(v)));
     if (sp && sp.count === false) { after.innerHTML = `<div class="fun">${esc(sp.msg)}</div>`; inp.value = ''; inp.focus(); return; }
     wrong++; shake(inp);
@@ -21,7 +21,7 @@ function gAnswer(t, g, done) {
   };
   g.querySelector('[data-a=go]').onclick = go; inp.onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); go(); } };
   const hb = g.querySelector('[data-a=hint]');
-  if (hb) hb.onclick = () => { if (used >= t.hints.length) return; after.innerHTML = `<div class="fun">💡 ${esc(t.hints[used])}</div>`; used++; hb.textContent = `💡 Hint (${t.hints.length - used})`; if (used >= t.hints.length) hb.disabled = true; };
+  if (hb) hb.onclick = () => { if (used >= t.hints.length) return; after.innerHTML = `<div class="fun">💡 ${esc(t.hints[used])}</div>`; used++; cutTot += hintCut(); hb.textContent = `💡 Hint (${t.hints.length - used})`; if (used >= t.hints.length) hb.disabled = true; };
 }
 
 function gQuiz(t, g, done) {
@@ -55,10 +55,10 @@ function gSearch(t, g, done) {
     if (count(grid) === 1) break;
   }
   const end = [start[0] + dir[0] * (W.length - 1), start[1] + dir[1] * (W.length - 1)];
-  let first = null, hinted = false, misses = 0;
+  let first = null, hinted = false, misses = 0, hc = 0;
   g.innerHTML = `<div class="wsgrid" style="grid-template-columns:repeat(${N},1fr)">${grid.map((row, r) => row.map((ch, q) => `<button class="wsc" data-r="${r}" data-q="${q}">${ch}</button>`).join('')).join('')}</div><p class="small muted center" data-msg style="margin:12px 0 0">Tap the first letter of the word…</p><button class="btn ghost block" data-a="hint" style="margin-top:10px">💡 Hint (costs a little)</button>`;
   const msg = g.querySelector('[data-msg]'), cell = (r, q) => g.querySelector(`.wsc[data-r="${r}"][data-q="${q}"]`);
-  g.querySelector('[data-a=hint]').onclick = e => { hinted = true; cell(...start).classList.add('hint'); e.target.remove(); msg.textContent = 'It starts on the glowing letter…'; };
+  g.querySelector('[data-a=hint]').onclick = e => { hinted = true; hc = hintCut(.15, .35); cell(...start).classList.add('hint'); e.target.remove(); msg.textContent = 'It starts on the glowing letter…'; };
   g.querySelectorAll('.wsc').forEach(b => b.onclick = () => {
     const rc = [+b.dataset.r, +b.dataset.q]; buzz(6);
     if (!first) { first = rc; b.classList.add('sel'); msg.textContent = 'Now tap the last letter…'; return; }
@@ -67,7 +67,7 @@ function gSearch(t, g, done) {
     if ((same(first, start) && same(rc, end)) || (same(first, end) && same(rc, start))) {
       for (let k = 0; k < W.length; k++) cell(start[0] + dir[0] * k, start[1] + dir[1] * k).classList.add('found');
       g.querySelectorAll('.sel').forEach(x => x.classList.remove('sel')); confetti(90); buzz([20, 40, 20]); msg.textContent = `${W}! 🌸`;
-      setTimeout(() => done(Math.max(.4, (hinted ? .7 : 1) - misses * .05), { text: `🔍 Found ${W}${hinted ? ' (with hint)' : ''}` }), 900);
+      setTimeout(() => done(Math.max(.4, 1 - hc - misses * .05), { text: `🔍 Found ${W}${hinted ? ' (with hint)' : ''}` }), 900);
     } else { misses++; shake(g.querySelector('.wsgrid')); g.querySelectorAll('.sel').forEach(x => x.classList.remove('sel')); first = null; msg.textContent = 'Not that one! Tap the first letter again…'; }
   });
 }
@@ -118,7 +118,7 @@ function gScramble(t, g, done) {
     const w = t.words[i], A = w.answer.toUpperCase().split(''), dec = (t.decoys || 0) ? Array.from({ length: t.decoys }, () => 'BCDGHKMNRSTUVY'[Math.floor(Math.random() * 14)]) : [], L = [...A, ...dec]; let order; do { order = shuffle(L.map((_, k) => k)); } while (order.every((v, k) => L[v] === L[k])); let picked = [], hinted = false;
     const draw = () => {
       g.innerHTML = `<div class="prog"><i style="width:${i / t.words.length * 100}%"></i></div><div class="small muted center" style="font-weight:600">${i + 1} of ${t.words.length}</div><div class="slots" style="margin:18px 0 6px">${A.map((_, k) => `<div class="slot">${picked[k] != null ? L[picked[k]] : ''}</div>`).join('')}</div><div class="tiles">${order.map(k => `<button class="tile ${picked.includes(k) ? 'used' : ''}" data-k="${k}">${L[k]}</button>`).join('')}</div>${hinted ? `<div class="fun">💡 ${esc(w.hint)}</div>` : ''}<div class="row" style="margin-top:12px"><button class="btn ghost" data-a="undo" style="flex:1">⌫</button><button class="btn ghost" data-a="hint" style="flex:1" ${hinted ? 'disabled' : ''}>💡 Hint</button><button class="btn ghost" data-a="skip" style="flex:1">Skip</button></div>`;
-      g.querySelectorAll('.tile').forEach(b => b.onclick = () => { picked.push(+b.dataset.k); buzz(6); if (picked.length === A.length) { if (picked.map(k => L[k]).join('') === A.join('')) { score += hinted ? .6 : 1; buzz(15); g.querySelector('.slots').classList.add('win'); setTimeout(() => { i++; step(); }, 600); draw(); } else { draw(); shake(g.querySelector('.slots')); setTimeout(() => { picked = []; draw(); }, 600); } } else draw(); });
+      g.querySelectorAll('.tile').forEach(b => b.onclick = () => { picked.push(+b.dataset.k); buzz(6); if (picked.length === A.length) { if (picked.map(k => L[k]).join('') === A.join('')) { score += hinted ? 1 - hintCut(.25, .5) : 1; buzz(15); g.querySelector('.slots').classList.add('win'); setTimeout(() => { i++; step(); }, 600); draw(); } else { draw(); shake(g.querySelector('.slots')); setTimeout(() => { picked = []; draw(); }, 600); } } else draw(); });
       g.querySelector('[data-a=undo]').onclick = () => { picked.pop(); draw(); };
       g.querySelector('[data-a=hint]').onclick = () => { hinted = true; draw(); };
       g.querySelector('[data-a=skip]').onclick = () => { i++; step(); };
@@ -157,16 +157,16 @@ function gMulti(t, g, done) {
 
 function gChoice(t, g, done) {
   const order = shuffle(t.options.map((_, i) => i));
-  let hinted = false;
+  let hinted = false, hc = 0;
   g.innerHTML = `${qCard(t.q, t.image, t.video)}<div class="opts" style="margin-top:14px">${order.map(i => `<button class="opt" data-k="${i}">${esc(t.options[i])}</button>`).join('')}</div>${t.hint ? '<button class="btn ghost block" data-a="hint" style="margin-top:10px">💡 Hint (costs a little)</button>' : ''}<div class="after"></div>`;
-  const hb = g.querySelector('[data-a=hint]'); if (hb) hb.onclick = () => { hinted = true; hb.outerHTML = `<div class="fun">💡 ${esc(t.hint)}</div>`; };
+  const hb = g.querySelector('[data-a=hint]'); if (hb) hb.onclick = () => { hinted = true; hc = hintCut(.15, .35); hb.outerHTML = `<div class="fun">💡 ${esc(t.hint)}</div>`; };
   g.querySelectorAll('.opt').forEach(b => b.onclick = () => {
     const ok = +b.dataset.k === t.answer;
     g.querySelectorAll('.opt').forEach(x => { x.disabled = true; if (+x.dataset.k === t.answer) x.classList.add('right'); });
     if (!ok) b.classList.add('wrong');
     buzz(ok ? 12 : [30, 30, 30]);
     g.querySelector('.after').innerHTML = `<div class="fun">${ok ? '✅ ' : '❌ '}${esc(t.fun || (ok ? 'Correct!' : 'Not this time!'))}</div><button class="btn block" style="margin-top:12px">Continue</button>`;
-    g.querySelector('.after .btn').onclick = () => done(ok ? (hinted ? .7 : 1) : 0, { wrong: !ok, text: `Picked "${t.options[+b.dataset.k]}"${hinted ? ' (used hint)' : ''}`, note: `You picked ${t.options[+b.dataset.k]}.` });
+    g.querySelector('.after .btn').onclick = () => done(ok ? 1 - hc : 0, { wrong: !ok, text: `Picked "${t.options[+b.dataset.k]}"${hinted ? ' (used hint)' : ''}`, note: `You picked ${t.options[+b.dataset.k]}.` });
   });
 }
 
@@ -260,12 +260,13 @@ function gNaughtyNice(t, g, done) {
   });
 }
 
-function gList(t, g, done) {
+function gList(t, g, done0) {
+  let cutTot = 0; const done = (f, d) => done0(Math.max(0, f * (1 - cutTot)), d);   // footballer hints cost a random slice
   const found = new Set(); let wrongs = 0; const maxG = t.maxGuesses || 0;
   const draw = () => { g.querySelector('.slots2').innerHTML = t.items.map((it, i) => `<div class="slot2 ${found.has(i) ? 'on' : ''}">${found.has(i) ? '✓ ' + esc(it.label) : '?'}</div>`).join(''); g.querySelector('.cnt').textContent = `${found.size} / ${t.items.length} found` + (maxG ? ` · ${Math.max(0, maxG - wrongs - found.size)} guesses left` : ` · ${t.items.length - found.size} left`); };
   g.innerHTML = `${qCard(t.q, t.image, t.video)}<div class="cnt center" style="font-weight:700;margin:14px 0 8px"></div><div class="slots2"></div><input class="field" style="margin-top:12px" placeholder="Type an item, press Enter…" autocomplete="off"><div class="after"></div><div class="row" style="margin-top:10px">${maxG ? '' : '<button class="btn ghost" data-a="give" style="flex:1">' + (t.partial ? 'I\'m done' : 'I\'m stuck, finish') + '</button>'}<button class="btn" data-a="go" style="flex:1">Add</button></div>${t.items.some(x => x.hint) ? '<button class="btn ghost block" data-a="fhint" style="margin-top:8px">⚽ Footballer hint</button><div class="fhints"></div>' : ''}`;
   const inp = g.querySelector('input'), after = g.querySelector('.after'); draw(); inp.focus();
-  const fh = g.querySelector('[data-a=fhint]'), shownH = new Set(); if (fh) fh.onclick = () => { const left = t.items.map((x, i) => i).filter(i => !found.has(i) && !shownH.has(i)); if (!left.length) { fh.disabled = true; fh.textContent = 'No hints left'; return; } const k = left[Math.floor(Math.random() * left.length)]; shownH.add(k); g.querySelector('.fhints').insertAdjacentHTML('beforeend', `<div class="fun">⚽ ${esc(t.items[k].hint)}</div>`); buzz(6); };
+  const fh = g.querySelector('[data-a=fhint]'), shownH = new Set(); if (fh) fh.onclick = () => { const left = t.items.map((x, i) => i).filter(i => !found.has(i) && !shownH.has(i)); if (!left.length) { fh.disabled = true; fh.textContent = 'No hints left'; return; } const k = left[Math.floor(Math.random() * left.length)]; shownH.add(k); cutTot += hintCut(.03, .08); g.querySelector('.fhints').insertAdjacentHTML('beforeend', `<div class="fun">⚽ ${esc(t.items[k].hint)}</div>`); buzz(6); };
   const go = () => { const v = inp.value.trim(); if (!v) return; let hits = t.items.map((it, i) => [it, i]).filter(([it, i]) => !found.has(i) && matches(v, it.accept, true)); if (!hits.length && !t.items.some(it => matches(v, it.accept, true))) hits = t.items.map((it, i) => [it, i]).filter(([it, i]) => !found.has(i) && matches(v, it.accept)).slice(0, 1); if (hits.length) { hits.forEach(([, i]) => found.add(i)); buzz(12); after.innerHTML = `<div class="fun">✅ ${hits.map(([it]) => esc(it.label)).join(', ')}</div>`; draw(); if (found.size === t.items.length) setTimeout(() => done(1, { text: `🧺 Named all ${t.items.length}!` }), 600); } else { wrongs++; shake(inp); after.innerHTML = `<div class="fun">❌ ${maxG ? 'Nope!' : t.partial ? 'Nope (or you already got that one)!' : 'Not in the hamper (or already found)!'}</div>`; draw(); } inp.value = ''; inp.focus(); if (maxG && found.size < t.items.length && wrongs + found.size >= maxG) setTimeout(() => done(found.size / t.items.length, { wrong: true, text: `Got ${found.size}/${t.items.length} in ${maxG} guesses`, msg: `Out of guesses! It was ${t.items.map(x => x.label).join(' and ')}.` }), 500); };
   g.querySelector('[data-a=go]').onclick = go; inp.onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); go(); } };
   const gv = g.querySelector('[data-a=give]'); if (gv) gv.onclick = () => { if (t.partial) { if (!confirm(`Finish with ${found.size} of ${t.items.length}?`)) return; return done(found.size / t.items.length, { wrong: found.size < t.items.length, text: `Got ${found.size}/${t.items.length}. Missed: ${t.items.filter((_, i) => !found.has(i)).map(x => x.label).join(', ') || 'none'}`, msg: `You got ${found.size} of ${t.items.length}! Missed: ${t.items.filter((_, i) => !found.has(i)).map(x => x.label).join(', ') || 'none'}` }); } if (!confirm(`Finish with ${found.size} of ${t.items.length}? You need ALL of them to win the money.`)) return; done(0, { wrong: true, text: `🧺 Stopped at ${found.size}/${t.items.length}. Missed: ${t.items.filter((_, i) => !found.has(i)).map(x => x.label).join(', ')}`, msg: `So close! You found ${found.size} of ${t.items.length}.` }); };
@@ -296,6 +297,28 @@ function gReverse(t, g, done) {
   };
 }
 
+// Quiz Ladder: questions get harder, each right answer climbs the prize ladder. Cash out any time, or go double-or-nothing on the next one.
+function gLadder(t, g, done) {
+  const L = t.ladder || [0.5, 1, 2, 3, 5, 8, 12, 16, 20, 25], Q = t.questions.slice(0, L.length), max = L[L.length - 1];
+  let i = 0, locked = false;
+  const fin = (amt, wrong, why) => done(Math.min(1, amt / (t.amount || max)), { wrong, text: `🪜 ${t.title}: ${why}`, msg: why });
+  const ladder = () => `<div class="lad">${L.map((v, k) => `<span class="${k < i ? 'ok' : k === i ? 'now' : ''}">${money(v)}</span>`).reverse().join('')}</div>`;
+  const step = () => {
+    const q = Q[i], have = i ? L[i - 1] : 0;
+    g.innerHTML = `<div class="rbtop"><span>Question ${i + 1} of ${Q.length}</span><b>${have ? money(have) + ' banked so far' : 'Nothing on the line yet'}</b></div>
+      <div class="ladwrap">${ladder()}<div class="ladq"><div class="small muted" style="margin-bottom:4px">For ${money(L[i])}${i ? ' (wrong = lose the lot!)' : ''}</div><p class="qtext" style="margin:0 0 10px">${esc(q.q)}</p><div class="ladopts">${q.options.map((o, k) => `<button class="btn ghost block" data-k="${k}">${esc(o)}</button>`).join('')}</div>${i ? `<button class="btn block" data-a="cash" style="margin-top:10px">💰 Cash out ${money(have)}</button>` : ''}</div></div>`;
+    g.querySelectorAll('[data-k]').forEach(b => b.onclick = () => {
+      if (locked) return; locked = true; const k = +b.dataset.k, ok = k === q.answer;
+      g.querySelectorAll('[data-k]').forEach(x => { x.disabled = true; if (+x.dataset.k === q.answer) x.classList.add('right'); });
+      if (!ok) { b.classList.add('wrongpick'); buzz([40, 30, 40]); return setTimeout(() => fin(0, true, `wrong on question ${i + 1} (${money(L[i])} question), lost ${money(have)} 😈`), 1300); }
+      buzz(15); i++;
+      if (i >= Q.length) { confetti(200); return setTimeout(() => fin(max, false, `ALL ${Q.length} right! ${money(max)} 🏆`), 900); }
+      setTimeout(() => { locked = false; step(); }, 800);
+    });
+    const c = g.querySelector('[data-a=cash]'); if (c) c.onclick = () => { if (locked) return; if (!confirm(`Cash out with ${money(have)}? The next question was worth ${money(L[i])}.`)) return; locked = true; fin(have, have < max, `cashed out at ${money(have)} after ${i} right`); };
+  };
+  step();
+}
 function gRisk(t, g, done) {
   const pool = shuffle(t.pool || []), R = Math.min(t.rounds || 10, pool.length), share = 1 / R; let i = 0, banked = 0, safeN = 0, riskW = 0, riskL = 0;
   // crypto-random order
@@ -358,7 +381,7 @@ function gEmoji(t, g, done) {
     g.innerHTML = `<div class="prog"><i style="width:${i / P.length * 100}%"></i></div><div class="small muted center" style="font-weight:700">${i + 1} of ${P.length}</div><div class="bigemoji">${esc(p.emoji)}</div><input class="field" placeholder="Your guess…" autocomplete="off"><div class="after"></div><div class="row" style="margin-top:12px"><button class="btn ghost" data-a="hint" style="flex:1">💡 Hint</button><button class="btn ghost" data-a="skip" style="flex:1">Skip</button></div><button class="btn block" data-a="go" style="margin-top:10px">Guess</button><p class="gonote">One go per puzzle</p>`;
     const inp = g.querySelector('input'), after = g.querySelector('.after'); inp.focus();
     const next = (ok, txt) => { inp.disabled = true; g.querySelectorAll('[data-a]').forEach(b => b.remove()); g.querySelector('.gonote')?.remove(); after.innerHTML = `<div class="fun">${ok ? '✅ Yes! ' : '👉 It was: '}<b>${esc(p.answer)}</b>${txt ? ' ' + txt : ''}</div><button class="btn block" style="margin-top:12px">${i + 1 < P.length ? 'Next' : 'See score'}</button>`; after.querySelector('.btn').onclick = () => { i++; step(); }; };
-    const go = () => { const v = inp.value.trim(); if (!v) return; const ok = matches(v, [p.answer, ...(p.accept || [])]); if (ok) { score += hinted ? .75 : 1; buzz(12); } else buzz([30, 30, 30]); next(ok); };
+    const go = () => { const v = inp.value.trim(); if (!v) return; const ok = matches(v, [p.answer, ...(p.accept || [])]); if (ok) { score += hinted ? 1 - hintCut(.15, .35) : 1; buzz(12); } else buzz([30, 30, 30]); next(ok); };
     g.querySelector('[data-a=go]').onclick = go; inp.onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); go(); } };
     g.querySelector('[data-a=hint]').onclick = e => { hinted = true; after.innerHTML = `<div class="fun">💡 ${esc(p.hint || '')}</div>`; e.target.disabled = true; };
     g.querySelector('[data-a=skip]').onclick = () => next(false);
@@ -383,12 +406,13 @@ function gWhois(t, g, done) {
 }
 
 function gMatch3(t, g, done, ctx) {
-  const PZ = [...POOL().filter(p => !p.lose && !p.again), { e: '🌿', l: 'JACKPOT', jackpot: true }], JP = PZ.length - 1;
+  const okP = p => !p.lose && !p.again && (!t.only || p.size === t.only || p.forfeit);
+  const PZ = [...POOL().filter(okP), { e: '🌿', l: 'JACKPOT', jackpot: true }], JP = PZ.length - 1;
   const LINES = [[0,1,2],[3,4,5],[6,7,8],[0,3,6],[1,4,7],[2,5,8],[0,4,8],[2,4,6]];
   const makeCard = winIdx => { for (let tries = 0; tries < 3000; tries++) { const c = Array.from({ length: 9 }, () => rnd(PZ.length)); let line = null; if (winIdx != null) { line = LINES[rnd(LINES.length)]; line.forEach(i => c[i] = winIdx); } const found = LINES.filter(l => c[l[0]] === c[l[1]] && c[l[1]] === c[l[2]]); if ((winIdx == null && !found.length) || (winIdx != null && found.length === 1)) return { c, line }; } return { c: [0,1,2,3,4,5,6,7,0], line: null }; };
   // ~40% per card; on her FIRST play the last card always wins if nothing has (birthday rule). Replays: no guarantee.
   const cards = t.cards || 3, plan = []; let anyWin = false;
-  for (let k = 0; k < cards; k++) { const win = (!ctx && k === cards - 1 && !anyWin) || rnd(100) < 40; if (win) anyWin = true; plan.push(makeCard(win ? (rnd(100) < 12 ? JP : PZ.indexOf(pickPool())) : null)); }
+  for (let k = 0; k < cards; k++) { const win = (k === cards - 1 && !anyWin) || rnd(100) < 40; if (win) anyWin = true; plan.push(makeCard(win ? (rnd(100) < 12 ? JP : PZ.indexOf(pickPool(p => okP(p) && !p.money))) : null)); }   // every play wins at least once
   let k = 0; const won = [];
   const show = () => {
     if (k >= plan.length) return finish();
@@ -413,7 +437,7 @@ function gMatch3(t, g, done, ctx) {
   const finish = () => {
     if (ctx) { const lines = won.map(p => awardPool(p, t.title) || (p.money ? 'Not a winner (pot bonus maxed out)' : null)); save(); return ctx.finish(lines.filter(x => x && !/maxed/.test(x)), `${won.length} win${won.length === 1 ? '' : 's'}`); }
     const money_ = won.some(p => p.money);
-    g.innerHTML = `<div class="card center"><div style="font-size:40px">🎉</div><h2 style="margin:6px 0">Your winnings</h2>${won.length ? won.map(p => `<div class="coupon" style="text-align:center"><b>${esc(p.money ? 'Cash for your holiday pot 💷' : p.prize || p.l)}</b></div>`).join('') : '<p class="muted">No luck this time!</p>'}<p class="small muted" style="margin:8px 0 0">You can play the scratchcards again as many times as you like 🔁</p><button class="btn block" style="margin-top:10px">Bank it</button></div>`;
+    g.innerHTML = `<div class="card center"><div style="font-size:40px">🎉</div><h2 style="margin:6px 0">Your winnings</h2>${won.length ? won.map(p => `<div class="coupon" style="text-align:center"><b>${esc(p.money ? 'Cash for your holiday pot 💷' : p.prize || p.l)}</b></div>`).join('') : '<p class="muted">No luck this time!</p>'}<p class="small muted" style="margin:8px 0 0">${t.replay && t.replay.max ? `You've got ${t.replay.max - 1} more goes 🔁` : 'Come back and play again 🔁'}</p><button class="btn block" style="margin-top:10px">Bank it</button></div>`;
     g.querySelector('.btn').onclick = () => { const got = won.filter(p => !p.money).map(p => awardPool(p, t.title)); save(); done(money_ ? 1 : 0, { text: `🎟️ Scratchcards: ${won.map(p => p.money ? 'cash' : p.prize || p.l).join(', ') || 'nothing'}`, msg: got.length ? `${got.length} coupon${got.length > 1 ? 's' : ''} saved in your Coupons tab 🎟️` : 'Come back and play again any time! 🔁' }); };
   };
   show();
@@ -454,7 +478,7 @@ function gCrossword(t, g, done) {
   const cw = t.grid, W = cw.w, H = cw.h, words = cw.words;
   const cells = {}; words.forEach((w, wi) => { for (let k = 0; k < w.answer.length; k++) { const r = w.row + (w.dir === 'D' ? k : 0), c = w.col + (w.dir === 'A' ? k : 0), key = r + ',' + c; (cells[key] ||= { r, c, ch: w.answer[k], words: [] }).words.push(wi); } });
   const nums = {}; words.forEach(w => nums[w.row + ',' + w.col] = w.num);
-  const val = {}; let cur = 0, pos = 0, reveals = 0, checked = false;
+  const val = {}; let cur = 0, pos = 0, reveals = 0, revCut = 0, checked = false;
   const wcells = wi => { const w = words[wi]; return Array.from({ length: w.answer.length }, (_, k) => (w.row + (w.dir === 'D' ? k : 0)) + ',' + (w.col + (w.dir === 'A' ? k : 0))); };
   const wordOk = wi => wcells(wi).every(k => val[k] === cells[k].ch);
   g.innerHTML = `<div class="cwclue"></div><div class="cwgrid" style="grid-template-columns:repeat(${W},1fr)">${Array.from({ length: H }, (_, r) => Array.from({ length: W }, (_, c) => { const k = r + ',' + c; return cells[k] ? `<button class="cwc" data-k="${k}">${nums[k] ? `<i>${nums[k]}</i>` : ''}<b></b></button>` : '<span class="cwx"></span>'; }).join('')).join('')}</div>
@@ -476,9 +500,9 @@ function gCrossword(t, g, done) {
   const put = ch => { const ks = wcells(cur); val[ks[pos]] = ch; if (pos < ks.length - 1) pos++; checked = false; draw(); if (words.every((_, wi) => wordOk(wi))) { confetti(90); buzz([20, 40, 20]); } };
   inp.addEventListener('input', () => { const v = inp.value.toUpperCase().replace(/[^A-Z]/g, ''); inp.value = ''; for (const ch of v) put(ch); });
   inp.addEventListener('keydown', e => { if (e.key === 'Backspace') { e.preventDefault(); const ks = wcells(cur); if (val[ks[pos]]) val[ks[pos]] = ''; else if (pos > 0) { pos--; val[ks[pos]] = ''; } checked = false; draw(); } });
-  g.querySelector('[data-a=rev]').onclick = () => { const ks = wcells(cur); const k = ks.find(x => val[x] !== cells[x].ch) ; if (!k) return; val[k] = cells[k].ch; reveals++; pos = Math.min(ks.indexOf(k) + 1, ks.length - 1); buzz(8); draw(); };
+  g.querySelector('[data-a=rev]').onclick = () => { const ks = wcells(cur); const k = ks.find(x => val[x] !== cells[x].ch) ; if (!k) return; val[k] = cells[k].ch; reveals++; revCut += hintCut(.02, .05); pos = Math.min(ks.indexOf(k) + 1, ks.length - 1); buzz(8); draw(); };
   g.querySelector('[data-a=chk]').onclick = () => { checked = true; draw(); const n = words.filter((_, wi) => wordOk(wi)).length; buzz(n === words.length ? [20, 40, 20] : 10); };
-  g.querySelector('[data-a=fin]').onclick = () => { const n = words.filter((_, wi) => wordOk(wi)).length; if (n < words.length && !confirm(`Finish with ${n} of ${words.length} words right?`)) return; const frac = Math.max(0, n / words.length - reveals * 0.03); done(frac, { wrong: frac < 1, text: `📝 Crossword: ${n}/${words.length} words${reveals ? `, ${reveals} letters revealed` : ''}`, msg: n === words.length ? 'Every single word! 📝🎉' : `${n} of ${words.length} words right!` }); };
+  g.querySelector('[data-a=fin]').onclick = () => { const n = words.filter((_, wi) => wordOk(wi)).length; if (n < words.length && !confirm(`Finish with ${n} of ${words.length} words right?`)) return; const frac = Math.max(0, n / words.length - revCut); done(frac, { wrong: frac < 1, text: `📝 Crossword: ${n}/${words.length} words${reveals ? `, ${reveals} letters revealed` : ''}`, msg: n === words.length ? 'Every single word! 📝🎉' : `${n} of ${words.length} words right!` }); };
   draw();
 }
 
@@ -645,7 +669,7 @@ function casinoStart(t, stake) {
 }
 // payout = what comes back (0 = lost the stake). Returns what was actually paid (the pot never goes past the cap).
 function casinoEnd(t, stake, payout, what) {
-  const room = Math.max(0, C.cap - rawEarned());
+  const room = Math.max(0, C.cap + OVER() - rawEarned());
   const paid = Math.min(half(payout), room);
   S.casino.net += paid; const d = paid - stake;
   if (d > 0) S.casino.won += d; else S.casino.lost += -d;
@@ -655,12 +679,12 @@ function casinoEnd(t, stake, payout, what) {
   discord(`🎰 **${C.name}** bet ${money(stake)} on **${t.title}** and ${sign}${what ? ` (${what})` : ''}\n_Casino overall: ${S.casino.net >= 0 ? '+' : '−'}${money(Math.abs(S.casino.net))} over ${S.casino.goes} goes · pot ${money(earned())}_`);
   return paid;
 }
-const CTYPES = { cups: cCups, double: cDouble, hilo: cHilo, cscratch: cScratch, cwheel: cWheel };
+const CTYPES = { cups: cCups, double: cDouble, hilo: cHilo, cscratch: cScratch, cwheel: cWheel, slots: cSlots };
 function gCasino(t, g, close) {
   let stake = 0, inGo = false, leave = null;
   const sheet = g.closest('.sheet'); if (sheet) sheet._leave = () => { if (inGo && leave) leave(); };
   const top = h(`<div class="cbar"><div><span class="small muted">YOUR POT</span><b class="cpot"></b></div><div style="text-align:right"><span class="small muted">CASINO SO FAR</span><b class="cnet"></b></div></div>`);
-  const pick = h(`<div class="card"><b>Pick your bet</b><div class="small muted" style="margin:2px 0 8px">Max £10 a go. It comes out of your holiday pot. Gamble responsibly-ish. 😂</div><div class="cchips"></div><button class="btn block" data-a="go" disabled style="margin-top:12px">Choose a bet</button></div>`);
+  const pick = h(`<div class="card"><b>Pick your bet</b><div class="small muted" style="margin:2px 0 8px">Max £10 a go. Anything you lose here isn't gone: it goes back into the other games for you to win back. 😉</div><div class="cchips"></div><button class="btn block" data-a="go" disabled style="margin-top:12px">Choose a bet</button></div>`);
   const area = h('<div class="carea"></div>');
   g.append(top, pick, area);
   const refresh = () => {
@@ -693,16 +717,19 @@ function gCasino(t, g, close) {
   };
   refresh();
 }
-// --- Pick a Cup: 3 cups, one hides the cash. Pays 2.8x.
+// --- Pick a Cup / Lucky Dip: each cup (or envelope) hides a different multiplier of the bet. She picks one, then sees them all.
 function cCups(t, a, stake, end, onLeave) {
-  const pay = t.pays || 2.8, win = rnd(3); onLeave(() => end(stake, 'left before picking a cup (stake back)'));
-  a.innerHTML = `<div class="card center"><b>Watch the cups… then pick one</b><div class="small muted" style="margin-top:2px">Find the 💷 and win ${money(half(stake * pay))}</div><div class="cups"><button class="cup">🥤</button><button class="cup">🥤</button><button class="cup">🥤</button></div></div>`;
+  const prizes = shuffle((t.prizes || [2, 0.6, 0.25]).slice()), n = prizes.length, ic = t.icon || '🥤';
+  const val = m => money(Math.floor(stake * m * 2) / 2);
+  onLeave(() => end(stake, `left before picking (stake back)`));
+  a.innerHTML = `<div class="card center"><b>${n > 3 ? 'Pick an envelope' : 'Watch the cups… then pick one'}</b><div class="small muted" style="margin-top:2px">Inside: ${[...prizes].sort((x, y) => y - x).map(val).join(' · ')}</div><div class="cups ${n > 3 ? 'many' : ''}">${prizes.map(() => `<button class="cup">${ic}</button>`).join('')}</div></div>`;
   const cups = [...a.querySelectorAll('.cup')]; cups.forEach(c => c.disabled = true);
-  let n = 0; const shuf = setInterval(() => { cups.forEach(c => c.classList.remove('jig')); cups[rnd(3)].classList.add('jig'); buzz(4); if (++n > 7) { clearInterval(shuf); cups.forEach(c => { c.classList.remove('jig'); c.disabled = false; }); } }, 260);
+  let k = 0; const shuf = setInterval(() => { cups.forEach(c => c.classList.remove('jig')); cups[rnd(n)].classList.add('jig'); buzz(4); if (++k > 7) { clearInterval(shuf); cups.forEach(c => { c.classList.remove('jig'); c.disabled = false; }); } }, 240);
   cups.forEach((c, i) => c.onclick = () => {
-    cups.forEach(x => x.disabled = true); onLeave(() => end(i === win ? stake * pay : 0, i === win ? 'found the cash 💷' : 'wrong cup'));
-    cups.forEach((x, j) => { x.classList.add('up'); x.innerHTML = `🥤<span>${j === win ? '💷' : '💨'}</span>`; if (j === i) x.classList.add('mine'); });
-    setTimeout(() => end(i === win ? stake * pay : 0, i === win ? 'found the cash 💷' : 'wrong cup'), 900);
+    cups.forEach(x => x.disabled = true); const m = prizes[i];
+    onLeave(() => end(stake * m, `picked ×${m}`));
+    cups.forEach((x, j) => { x.classList.add('up'); x.innerHTML = `${ic}<span>${val(prizes[j])}</span>`; if (j === i) x.classList.add('mine'); });
+    setTimeout(() => end(stake * m, `picked ×${m}`), 1100);
   });
 }
 // --- Double or Nothing: flip to double what's on the line, or bank it. 4% chance the coin lands on its edge = Jack wins.
@@ -719,7 +746,7 @@ function cDouble(t, a, stake, end, onLeave) {
     let landed = false; const resolve = () => { if (landed) return; landed = true; onLeave(() => end(line, `left the table, banked ${money(line)}`));
       const r = rnd(100), side = r < EDGE ? 'edge' : (r % 2 ? 'h' : 't');
       if (side === call) { line *= 2; flips++; buzz(15); if (flips >= MAX) return end(line, `${flips} flips in a row! 🔥`, '🔥 Max flips! Banked automatically.'); draw(side === 'h' ? '🌿' : '🧔'); }
-      else end(0, side === 'edge' ? 'coin landed on its EDGE' : `lost on flip ${flips + 1}`, side === 'edge' ? '😱 It landed on its EDGE. Jack wins!' : `It was ${side === 'h' ? '🌿 Heads' : '🧔 Tails'}.`);
+      else end(stake * (t.consolation || 0), side === 'edge' ? 'coin landed on its EDGE' : `lost on flip ${flips + 1}`, side === 'edge' ? '😱 It landed on its EDGE. Jack wins!' : `It was ${side === 'h' ? '🌿 Heads' : '🧔 Tails'}.`);
     };
     onLeave(resolve); setTimeout(resolve, 900);
   };
@@ -741,12 +768,35 @@ function cHilo(t, a, stake, end, onLeave) {
   const go = up => {
     const m = odds(up), n = 1 + rnd(13), ns = rnd(4), ok = up ? n > v : n < v, prev = card(v, su), ov = v;
     v = n; su = ns; buzz(8);
-    if (!ok) return end(0, `wrong call on card ${calls + 2}`, `<div class="hrow">${prev}${card(n, ns)}</div><div style="margin-top:6px">${n === ov ? 'Same card. Jack wins! 😈' : 'Wrong call!'}</div>`);
+    if (!ok) return end(stake * (t.consolation || 0), `wrong call on card ${calls + 2}`, `<div class="hrow">${prev}${card(n, ns)}</div><div style="margin-top:6px">${n === ov ? 'Same card. Jack wins! 😈' : 'Wrong call!'}</div>`);
     mult *= m; calls++;
     if (calls >= MAX - 1) return end(stake * mult, `${calls} right calls in a row 🔥`, `<div class="hrow">${prev}${card(n, ns)}</div><div style="margin-top:6px">🔥 ${calls} right in a row! Banked automatically.</div>`);
     draw(`<div class="hcard old">${prev.replace(/^<div class="hcard[^"]*">/, '').replace(/<\/div>$/, '')}</div>`);
   };
   draw();
+}
+// --- Fruit Machine: 3 reels. The result is drawn from t.table first (so the odds are exact), then the reels are dressed to show it.
+function cSlots(t, a, stake, end, onLeave) {
+  const tab = t.table, tot = tab.reduce((x, r) => x + r.w, 0); let r = rnd(tot), res = tab[tab.length - 1];
+  for (const row of tab) { if ((r -= row.w) < 0) { res = row; break; } }
+  const SY = ['🍒', '🍋', '🍇', '🔔', '🌿', '⭐'], pick = ex => { let s; do { s = SY[rnd(SY.length)]; } while (ex.includes(s)); return s; };
+  let reels;
+  if (res.kind === 'three') reels = [res.sym, res.sym, res.sym];
+  else if (res.kind === 'pair') { const s = pick(['🍒']), o = pick([s]); reels = shuffle([s, s, o]); }
+  else if (res.kind === 'cherry') { const x = pick(['🍒']), y = pick(['🍒', x]); reels = shuffle(['🍒', x, y]); }
+  else { const x = pick(['🍒']), y = pick(['🍒', x]), z = pick(['🍒', x, y]); reels = [x, y, z]; }
+  a.innerHTML = `<div class="card center"><div class="slots3">${[0, 1, 2].map(() => `<div class="reel"><span>🎰</span></div>`).join('')}</div><button class="btn block" style="margin-top:12px">Pull the lever! 🎰</button><div class="ctable small muted">${tab.filter(x => x.label).map(x => `<span>${x.label} ×${x.m}</span>`).join('')}</div></div>`;
+  const b = a.querySelector('.btn'), els = [...a.querySelectorAll('.reel span')];
+  onLeave(() => end(stake, 'left before pulling (stake back)'));
+  b.onclick = () => {
+    b.disabled = true; let done_ = false; const land = () => { if (done_) return; done_ = true; clearInterval(spin); els.forEach((e, i) => e.textContent = reels[i]); b.remove(); end(stake * res.m, `${reels.join('')} ×${res.m}`); };
+    onLeave(land);
+    let stopped = 0; buzz(8);
+    const spin = setInterval(() => els.slice(stopped).forEach(e => e.textContent = SY[rnd(SY.length)]), 90);
+    setTimeout(() => { stopped = 1; els[0].textContent = reels[0]; buzz(6); }, 900);
+    setTimeout(() => { stopped = 2; els[1].textContent = reels[1]; buzz(6); }, 1400);
+    setTimeout(() => { clearInterval(spin); land(); }, 1950);
+  };
 }
 // --- paid scratchcard: the result is drawn first (from the card's prize table), then the card is built to show it.
 function cScratch(t, a, stake, end, onLeave) {

@@ -61,7 +61,7 @@ const SECT = [
   ['dares', '🔥', 'Dares', 'Do it, then I give you a code. Swap any you like'],
   ['hunt', '🗝️', 'Finds & Mysteries', 'Hidden notes, secret codes and a mystery parcel'],
   ['birthday', '🎂', 'Dream Birthday', 'Help me plan your 30th (any answer wins)'],
-  ['casino', '🎰', "Jack's Casino", 'Bet your pot (max £10 a go): win big, or lose it'],
+  ['casino', '🎰', "Jack's Casino", 'Bet up to £10 a go. Lose it and it goes back into the other games'],
 ];
 function lockBanner(w) {
   if (!S.locked) return;
@@ -74,19 +74,19 @@ function renderHome(w) {
   const tasks = live();
   if (cat) {
     const S0 = SECT.find(x => x[0] === cat) || ['', '', cat, ''];
-    const ts = tasks.filter(t => t.cat === cat).sort((x, y) => ((!!S.done[x.id]) - (!!S.done[y.id])) || ((!!x.last) - (!!y.last)));
+    const ts = tasks.filter(t => t.cat === cat).sort((x, y) => ((!!x.spicy) - (!!y.spicy)) || ((!!S.done[x.id]) - (!!S.done[y.id])) || ((!!x.last) - (!!y.last)));   // 🌶️ always at the bottom
     const back = h(`<button class="crumb">← All sections</button>`); back.onclick = () => { cat = null; render(); scrollTo(0, 0); }; w.appendChild(back);
     w.appendChild(h(`<div class="sechead"><span class="sem">${S0[1]}</span><div><h2>${esc(S0[2])}</h2><div class="small muted">${cat === 'casino' ? '' : `${ts.filter(t => S.done[t.id]).length} of ${ts.length} done · `}${esc(S0[3])}</div></div></div>`));
     const list = h('<div class="rows"></div>');
     ts.forEach(t => {
       const d = S.done[t.id], wait = waiting(t), rw = ['done', 'reverse', 'code', 'qr', 'naughtynice'].includes(t.type), big = (t.amount || 0) >= 25;
-      const b = h(`<button class="trow ${d ? 'done' : ''}"><span class="em">${ico(t.emoji)}</span><span class="tt"><b>${esc(t.title)}</b><span class="tags">${t.draft ? '<i class="tag dark">DRAFT</i>' : ''}${wait ? `<i class="tag">${esc(t.afterNote || '🔒 Unlocks after the others')}</i>` : ''}${rw ? '<i class="tag">🚶 Real world</i>' : ''}${d ? `<i class="tag gold">+${money(won(t))}</i>` : ''}${d && t.replay && playsLeft(t) ? `<i class="tag">🔁 ${t.replay.max ? `${playsLeft(t)} ${t.type === 'wheel' ? 'spins' : 'plays'} left` : 'Play again'}</i>` : ''}${t.optional ? '<i class="tag">Optional</i>' : ''}${t.casino ? `<i class="tag gold">🎲 Bet ${t.chips ? '£' + t.chips.join(' or £') : '£1 to £10'}</i>` : ''}</span></span><span class="st">${d ? (t.replay && playsLeft(t) ? '🔁' : '✓') : '›'}</span></button>`);
+      const b = h(`<button class="trow ${d ? 'done' : ''}"><span class="em">${ico(t.emoji)}</span><span class="tt"><b>${esc(t.title)}</b><span class="tags">${t.draft ? '<i class="tag dark">DRAFT</i>' : ''}${wait ? `<i class="tag">${esc(t.afterNote || '🔒 Unlocks after the others')}</i>` : ''}${rw ? '<i class="tag">🚶 Real world</i>' : ''}${d ? `<i class="tag gold">+${money(won(t))}</i>` : ''}${d && t.replay && playsLeft(t) ? `<i class="tag">🔁 ${t.replay.max ? `${playsLeft(t)} ${t.type === 'wheel' ? 'spins' : 'plays'} left` : 'Play again'}</i>` : ''}${t.optional ? '<i class="tag">Optional</i>' : ''}${t.spicy ? '<i class="tag spicy">🌶️ Spicy</i>' : ''}${t.casino ? `<i class="tag gold">🎲 Bet ${t.chips ? '£' + t.chips.join(' or £') : '£1 to £10'}</i>` : ''}</span></span><span class="st">${d ? (t.replay && playsLeft(t) ? '🔁' : '✓') : '›'}</span></button>`);
       b.onclick = () => { if ((S.locked || wait) && !d) { b.classList.add('shake'); setTimeout(() => b.classList.remove('shake'), 400); return; } openTask(t); }; if ((S.locked || wait) && !d) b.classList.add('locked'); list.appendChild(b);
     });
     w.appendChild(list);
     return;
   }
-  const pool = tasks.filter(t => !S.done[t.id] && !t.draft && !t.casino && !waiting(t));
+  const pool = tasks.filter(t => !S.done[t.id] && !t.draft && !t.casino && !(window.SHOW_MODE && t.spicy) && !waiting(t));
   if (pool.length && !S.locked) { const sp = h(`<button class="surprise">🎲 Surprise me: pick a random challenge</button>`); sp.onclick = () => { buzz(10); openTask(pool[Math.floor(Math.random() * pool.length)]); }; w.appendChild(sp); }
   w.appendChild(h(`<div class="sect" style="margin-top:6px">Pick a section</div>`));
   const grid = h('<div class="secs2"></div>');
@@ -124,7 +124,7 @@ function openTask(t) {
   }
   if (prev && !t.pref) { g.innerHTML = `<div class="card center"><div style="font-size:40px">✅</div><h3 style="margin:8px 0">Already completed</h3><p class="muted">${prev.note ? esc(prev.note) : 'Nice work. This one is banked.'}</p><button class="btn block">Back</button></div>`; g.querySelector('.btn').onclick = close; return; }
   const done = (frac, detail) => complete(t, frac, detail || {}, close);
-  const fn = { crossword: gCrossword, redblack: gRedBlack, rps: gRps, emoji: gEmoji, whois: gWhois, match3: gMatch3, search: gSearch, wordle: gWordle, missing: gMissing, scramble: gScramble, tap: gTap, multi: gMulti, list: gList, done: gDone, quiz: gQuiz, answer: gAnswer, choice: gChoice, open: gOpen, parcel: gParcel, memory5: gMemory5, listing: gListing, naughtynice: gNaughtyNice, pin: gPin, reverse: gReverse, risk: gRisk, memory: gMemory, wheel: gWheel, 'this-or-that': gTot, scratch: gScratch, code: gCode, qr: gQr, photo: gPhoto, reveal: gReveal, order: gOrder }[t.type];
+  const fn = { ladder: gLadder, crossword: gCrossword, redblack: gRedBlack, rps: gRps, emoji: gEmoji, whois: gWhois, match3: gMatch3, search: gSearch, wordle: gWordle, missing: gMissing, scramble: gScramble, tap: gTap, multi: gMulti, list: gList, done: gDone, quiz: gQuiz, answer: gAnswer, choice: gChoice, open: gOpen, parcel: gParcel, memory5: gMemory5, listing: gListing, naughtynice: gNaughtyNice, pin: gPin, reverse: gReverse, risk: gRisk, memory: gMemory, wheel: gWheel, 'this-or-that': gTot, scratch: gScratch, code: gCode, qr: gQr, photo: gPhoto, reveal: gReveal, order: gOrder }[t.type];
   if (!fn) { g.innerHTML = '<p class="center muted">Coming soon.</p>'; return; }
   fn(t, g, done);
 }
@@ -154,6 +154,13 @@ function complete(t, frac, detail, close) {
   if (first && t.prize) { gotPrize = t.prize; S.prizes.push({ id: t.id, text: t.prize, from: t.title, used: false }); }
   if (detail.prize) { gotPrize = detail.prize; S.prizes.push({ id: t.id + '-x', text: detail.prize, from: t.title, used: false }); }
   if (t.pref) S.prefs[t.id] = { q: t.q || t.title, tag: t.tag || 'style', answer: detail.raw ?? '', parts: detail.parts, skipped: !!detail.skipped, at: new Date().toISOString() };
+  // 🎁 bonus coupons: one every 10 challenges, and a BIG one for finishing a whole section
+  if (first && !t.casino) {
+    const nDone = doneCount(); if (S.ms == null) S.ms = Math.floor((nDone - 1) / 10);
+    if (Math.floor(nDone / 10) > S.ms) { S.ms = Math.floor(nDone / 10); const got = awardPool(pickPool(q => !q.money && !q.forfeit && !q.lose && !q.again), `${S.ms * 10} challenges done 🎉`); if (got) gotPrize = (gotPrize ? gotPrize + ' + ' : '') + `🎉 ${S.ms * 10} challenges bonus: ${got}`; }
+    S.secDone ||= {};
+    if (!S.secDone[t.cat] && scored().filter(x => x.cat === t.cat).every(x => S.done[x.id])) { S.secDone[t.cat] = Date.now(); const got = awardPool(pickPool(q => q.size === 'big' && !q.money && !q.forfeit && !q.lose && !q.again), `Section complete: ${CATS[t.cat] || t.cat}`); if (got) { gotPrize = (gotPrize ? gotPrize + ' + ' : '') + `🏆 Section complete bonus: ${got}`; discord(`🏆 **${C.name}** finished the whole ${CATS[t.cat] || t.cat} section! Bonus coupon: **${got}**`); } }
+  }
   save();
   const amt = Math.floor((t.amount || 0) * frac * 2) / 2;
   const pctTxt = frac < 1 && !detail.skipped ? ` (${Math.round(frac * 100)}%)` : '';
@@ -319,14 +326,14 @@ function renderFinale(w) {
   header(w);
   if (!potOpen()) {
     const left = scored().length - doneCount();
-    bigJar(w);
+    bigJar(w); tripQuizCard(w);
     const c = h(`<div class="card lockcard"><div class="big">🍯</div><h2 style="margin-top:8px">${doneCount() ? 'Ready to plan?' : 'Your pot is empty… for now'}</h2>${doneCount() ? '' : `<p class="muted" style="line-height:1.5">Do a few challenges first. Every one you finish adds money to your holiday pot. Then come back here to plan the trip. ✈️</p>`}<div style="${doneCount() ? '' : 'display:none'}"><p class="muted" style="line-height:1.5">You've done <b>${doneCount()}</b> of <b>${scored().length}</b> challenges. You've won <b>${money(earned())}</b> so far. Keep going to fill it up, or cash out now and plan a trip with what you've won.</p><p class="small muted">If your trip ends up costing more than your pot, you can always come back and do more challenges to top it up.</p><button class="btn block" data-a="cash" style="margin-top:8px" ${doneCount() ? '' : 'disabled'}>Cash out ${money(earned())} and plan the trip</button></div></div>`);
     w.appendChild(c);
     c.querySelector('[data-a=cash]').onclick = () => { if (!confirm(`Cash out with ${money(earned())} and start planning? You can still do the other ${left} challenges later to add more.`)) return; S.cashed = Date.now(); S.revealed = true; setTimeout(() => autoBackup('cashed out'), 50); S.locked = true; save(); discord(`💰 **${C.name}** cashed out early with ${doneCount()}/${scored().length} done: **${money(earned())}**`); render(); };
     return;
   }
   const total = earned();
-  lockBanner(w);
+  lockBanner(w); tripQuizCard(w);
   w.appendChild(h(`<div class="dayhead"><h2>${S.submitted ? 'Your trip 💚' : 'Time to plan 🎉'}</h2>${finaleOpen() ? '<p>Every single challenge done. Legend.</p>' : ''}</div>`));
   const rv = h(`<button class="rev ${S.revealed ? '' : 'sealed'}" style="padding:26px 20px"><span class="ic">🍯</span><div><b class="serif" style="font-size:20px">Your holiday pot</b><div class="small muted">Flights, stay and one big activity</div></div><span class="amt">${S.revealed ? money(total) : 'Tap to open'}</span></button>`);
   w.appendChild(rv);

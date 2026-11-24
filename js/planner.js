@@ -267,3 +267,129 @@ function boardingPass(w, total) {
   e.onclick = () => { S.editing = true; S.plan.step = 6; save(); render(); };
 }
 
+// ===== 🗺️ Dream Trip Quiz: Becki's big data-farm. Saves every answer to S.tq (her cloud save), so she can stop and come back.
+// Stages run activities -> stay -> holiday type -> places -> getting there (last) -> dream big. Then an "analysing" screen scores every destination.
+const TQ = () => (G && G.tripQuiz) || null;
+const tqA = () => (S.tq ||= {});
+const tqAll = () => (TQ() ? TQ().stages.flatMap(s => s.qs) : []);
+const tqDone = q => { const v = tqA()[q.id]; return v != null && v !== '' && !(Array.isArray(v) && !v.length); };
+const tqCount = s => { const qs = s ? s.qs : tqAll(); return [qs.filter(tqDone).length, qs.length]; };
+function tripQuizCard(w) {
+  if (!TQ()) return;
+  const [n, N] = tqCount(), pct = N ? Math.round(n / N * 100) : 0;
+  const c = h(`<div class="card tqcard"><div class="row" style="gap:12px;align-items:center"><span style="font-size:34px">🗺️</span><div style="flex:1;min-width:0"><b class="serif" style="font-size:19px">Your Dream Trip Quiz</b><div class="small muted">${n ? `${n} of ${N} answered · it saves as you go` : `${N} quick questions so Jack (and I!) can find your perfect trip`}</div></div></div><div class="potbar" style="margin:10px 0"><i style="width:${pct}%"></i></div><div class="row" style="gap:8px"><button class="btn" style="flex:1" data-a="go">${n ? 'Carry on ✨' : 'Start the quiz ✨'}</button>${n >= 40 ? '<button class="btn ghost" style="flex:1" data-a="res">🔍 My matches</button>' : ''}</div></div>`);
+  c.querySelector('[data-a=go]').onclick = () => openTripQuiz();
+  const r = c.querySelector('[data-a=res]'); if (r) r.onclick = () => openTripQuiz('results');
+  w.appendChild(c);
+}
+function openTripQuiz(start) {
+  const sh = h(`<div class="sheet"><div class="wrap"><div class="sheethead"><button class="back" aria-label="Back">←</button><span class="pill">🗺️ Dream Trip Quiz</span></div><div class="tq"></div></div></div>`);
+  document.body.appendChild(sh); document.body.style.overflow = 'hidden';
+  const box = sh.querySelector('.tq'); let view = 'stages', st = null, idx = 0;
+  const close = () => { sh.remove(); document.body.style.overflow = ''; render(); };
+  sh.querySelector('.back').onclick = () => { if (view === 'q' || view === 'results') { view = 'stages'; draw(); } else close(); };
+  const stages = TQ().stages;
+  const drawStages = () => {
+    const [n, N] = tqCount();
+    box.innerHTML = `<div class="taskhero"><h2>Find your perfect trip</h2><p>Answer as many as you like, in any order. It all saves, so come back whenever. Activities first, flights last!</p></div><div class="small muted center" style="margin:-6px 0 12px">${n} of ${N} answered</div><div class="tqstages"></div>${n >= 40 ? '<button class="btn block" data-a="res" style="margin-top:14px">🔍 Find my matches</button>' : `<p class="small muted center" style="margin-top:14px">Answer 40+ to unlock your matches (${Math.max(0, 40 - n)} to go)</p>`}`;
+    const list = box.querySelector('.tqstages');
+    stages.forEach((s, k) => { const [a, b] = tqCount(s); const btn = h(`<button class="tqstage ${a === b ? 'done' : ''}"><span class="em">${s.e}</span><span class="tt"><b>${k + 1}. ${esc(s.title)}</b><span class="small muted">${a === b ? 'All done ✓' : `${a} of ${b}`}</span></span><span class="st">${a === b ? '✓' : '›'}</span></button>`);
+      btn.onclick = () => { st = s; idx = Math.max(0, s.qs.findIndex(q => !tqDone(q))); view = 'q'; draw(); }; list.appendChild(btn); });
+    const r = box.querySelector('[data-a=res]'); if (r) r.onclick = () => { view = 'results'; draw(); };
+  };
+  const answer = (q, v) => {
+    tqA()[q.id] = v; save(); buzz(8);
+    const next = st.qs.findIndex((x, k) => k > idx && !tqDone(x));
+    if (next >= 0) idx = next; else if (st.qs.every(tqDone)) { stageDone(st); view = 'stages'; } else idx = Math.min(st.qs.length - 1, idx + 1);
+    draw();
+  };
+  const stageDone = s => {
+    const loves = s.qs.filter(q => ['love', 'want'].includes(tqA()[q.id])).map(q => q.t).slice(0, 15);
+    const texts = s.qs.filter(q => q.k === 'text' && tqA()[q.id]).map(q => `> ${q.t}\n> **${String(tqA()[q.id]).slice(0, 300)}**`);
+    discord(`${s.id === 'g' ? '🔒 **30TH DATA (Jack only)** · ' : ''}🗺️ **${C.name}** finished Trip Quiz stage **${s.title}**${loves.length ? `\n💚 Loves: ${loves.join(' · ')}` : ''}${texts.length ? '\n' + texts.join('\n') : ''}`);
+    const m = h(`<div class="modal"><div class="card center"><div style="font-size:44px">${s.e}</div><h2 style="margin:6px 0">${esc(s.title)}: done!</h2><p class="muted" style="margin:0 0 10px">Saved. Pick another stage whenever you're ready.</p><button class="btn block">Nice 🙌</button></div></div>`);
+    document.body.appendChild(m); confetti(70); m.querySelector('.btn').onclick = () => m.remove();
+  };
+  const drawQ = () => {
+    const q = st.qs[idx], v = tqA()[q.id], [a, b] = tqCount(st);
+    let body = '';
+    if (q.k === 'swipe') body = `<div class="tqbtns">${[['love', '😍', 'Love it'], ['meh', '🤷', 'Maybe'], ['no', '🙅', 'Not for me']].map(([k, e, l]) => `<button class="tqb ${v === k ? 'on' : ''}" data-v="${k}"><span>${e}</span><small>${l}</small></button>`).join('')}</div>`;
+    else if (q.k === 'country') body = `<div class="tqbtns four">${[['want', '🤩', 'Want to go'], ['loved', '✅', 'Been, loved it'], ['been', '👍', 'Been, once is enough'], ['no', '🙅', 'Not for me']].map(([k, e, l]) => `<button class="tqb ${v === k ? 'on' : ''}" data-v="${k}"><span>${e}</span><small>${l}</small></button>`).join('')}</div>`;
+    else if (q.k === 'pick') body = `<div class="tqopts">${q.o.map(o => `<button class="opt ${v === o ? 'on' : ''}" data-v="${esc(o)}">${esc(o)}</button>`).join('')}</div>`;
+    else if (q.k === 'multi') body = `<div class="chips">${q.o.map(o => `<button class="chip ${(v || []).includes(o) ? 'on' : ''}" data-m="${esc(o)}">${esc(o)}</button>`).join('')}</div><button class="btn block" data-a="mnext" style="margin-top:14px">Next →</button>`;
+    else body = `<textarea class="field" rows="4" placeholder="Type here…">${esc(v || '')}</textarea><button class="btn block" data-a="tnext" style="margin-top:10px">Save →</button>`;
+    box.innerHTML = `<div class="rbtop"><span>${st.e} ${esc(st.title)}</span><b>${a} / ${b}</b></div><div class="prog"><i style="width:${a / b * 100}%"></i></div>
+      <div class="card tqq">${q.flag ? `<div style="font-size:30px">${q.flag}</div>` : ''}<h3>${esc(q.t)}</h3>${q.s ? `<p class="muted">${esc(q.s)}</p>` : ''}${q.info ? `<div class="small muted">${q.info.map(esc).join(' · ')}</div>` : ''}${q.k === 'multi' && q.max && q.max < 12 ? `<div class="small muted">Pick up to ${q.max}</div>` : ''}</div>
+      ${body}<div class="row" style="gap:8px;margin-top:12px"><button class="btn ghost sm" style="flex:1" data-a="prev" ${idx ? '' : 'disabled'}>← Back</button><button class="btn ghost sm" style="flex:1" data-a="skip">Skip</button><button class="btn ghost sm" style="flex:1" data-a="out">Save & exit</button></div>`;
+    box.querySelectorAll('[data-v]').forEach(b => b.onclick = () => answer(q, b.dataset.v));
+    const sel = new Set(v || []);
+    box.querySelectorAll('[data-m]').forEach(b => b.onclick = () => { const o = b.dataset.m; if (sel.has(o)) sel.delete(o); else { if (q.max && sel.size >= q.max) return buzz([30, 30]); sel.add(o); } b.classList.toggle('on', sel.has(o)); buzz(5); });
+    const mn = box.querySelector('[data-a=mnext]'); if (mn) mn.onclick = () => answer(q, [...sel]);
+    const tn = box.querySelector('[data-a=tnext]'); if (tn) tn.onclick = () => { const t = box.querySelector('textarea').value.trim(); if (t) answer(q, t); else box.querySelector('[data-a=skip]').click(); };
+    box.querySelector('[data-a=prev]').onclick = () => { idx = Math.max(0, idx - 1); draw(); };
+    box.querySelector('[data-a=skip]').onclick = () => { idx = (idx + 1) % st.qs.length; draw(); };
+    box.querySelector('[data-a=out]').onclick = () => { view = 'stages'; draw(); };
+  };
+  const drawResults = () => {
+    box.innerHTML = `<div class="tqload"><div class="tqspin">🗺️</div><h2>Analysing your answers…</h2><p class="muted" data-l></p></div>`;
+    const lines = [`Reading your ${tqCount()[0]} answers…`, 'Matching 120 destinations…', 'Checking the weather by month…', 'Adding Jack\'s two pence… 🧔', 'Picking your top matches…'];
+    let k = 0; const el = box.querySelector('[data-l]'); el.textContent = lines[0];
+    const t = setInterval(() => { k++; if (k < lines.length) el.textContent = lines[k]; else { clearInterval(t); showResults(); } }, 900);
+  };
+  const showResults = () => {
+    const res = tqScore().slice(0, 6);
+    S.tqResults = { at: Date.now(), top: res.map(r => ({ city: r.d.city, pct: r.pct })) }; save();
+    discord(`🔍 **${C.name}** ran her Trip Quiz matches:\n${res.map((r, i) => `${i + 1}. ${r.d.flag} ${r.d.city} (${r.pct}%)`).join('\n')}`);
+    box.innerHTML = `<div class="taskhero"><h2>Your top matches 💚</h2><p>Based on everything you've told me so far. Answer more and these get sharper.</p></div><div class="tqres"></div><button class="btn ghost block" data-a="more" style="margin-top:12px">Answer more questions</button>`;
+    const list = box.querySelector('.tqres');
+    res.forEach((r, i) => list.appendChild(h(`<div class="card tqhit"><div class="row" style="gap:10px;align-items:center"><span style="font-size:30px">${r.d.flag}</span><div style="flex:1;min-width:0"><b>${i + 1}. ${esc(r.d.city)}</b><div class="small muted">${esc(r.d.country)} · ${esc(r.d.fromMAN || '')}</div></div><span class="tqpct">${r.pct}%</span></div><p class="small" style="margin:8px 0 0">${esc(r.d.blurb || '')}</p>${r.why.length ? `<div class="small muted" style="margin-top:6px">Why: ${esc(r.why.join(', '))}</div>` : ''}${r.jack ? `<div class="fun" style="margin-top:8px">🧔 Jack's take: ${esc(r.jack)}</div>` : ''}</div>`)));
+    box.querySelector('[data-a=more]').onclick = () => { view = 'stages'; draw(); };
+  };
+  const draw = () => { if (view === 'stages') drawStages(); else if (view === 'q') drawQ(); else drawResults(); sh.scrollTo && sh.scrollTo(0, 0); };
+  if (start === 'results') view = 'results';
+  draw();
+}
+// Scoring: every answer nudges tag weights; each destination scores on its vibes, parks, months, flight time, and her direct swipes.
+const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+function tqMonths(best) {
+  const out = new Set(); String(best || '').toLowerCase().split(',').forEach(p => { const m = p.match(/([a-z]{3})[a-z]*\s*[–-]\s*([a-z]{3})/); if (m) { let a = MONTHS.indexOf(m[1]), b = MONTHS.indexOf(m[2]); if (a >= 0 && b >= 0) { let k = a; do { out.add(k); k = (k + 1) % 12; } while (k !== (b + 1) % 12); } } else { const s = p.match(/([a-z]{3})/); if (s && MONTHS.indexOf(s[1]) >= 0) out.add(MONTHS.indexOf(s[1])); } });
+  return out;
+}
+function tqScore() {
+  const A = tqA(), all = tqAll(), W = {}, add = (t, n) => { W[t] = (W[t] || 0) + n; };
+  const val = { love: 2, meh: .4, no: -1.5 };
+  all.forEach(q => { const v = A[q.id]; if (q.k === 'swipe' && v in val && !q.dest) q.tags.forEach(t => add(t, val[v])); });
+  const topMap = { 'Theme parks': 'themepark', 'Zoos & animals': 'zoo', 'Spa & baths': 'spa', 'Beach & pool': 'beach', 'Food & drink': 'food', 'History & sightseeing': 'culture', 'Nature & views': 'nature', 'Nightlife': 'nightlife', 'Adventure': 'adventure', 'Shopping': 'shopping' };
+  all.forEach(q => { if (q.k === 'multi' && Array.isArray(A[q.id])) A[q.id].forEach(o => topMap[o] && add(topMap[o], 3)); });
+  const pick = t => { const q = all.find(x => x.t === t); return q ? A[q.id] : null; };
+  if (pick('City break or Beach holiday?') === 'City break') add('city', 3); if (pick('City break or Beach holiday?') === 'Beach holiday') add('beach', 3);
+  if (pick('Theme park on the trip or No theme parks this time?') === 'Theme park on the trip') add('themepark', 3);
+  if (pick('Theme park on the trip or No theme parks this time?') === 'No theme parks this time') add('themepark', -3);
+  if (pick('Warm and sunny or Cold and cosy?') === 'Cold and cosy') add('snow', 3);
+  add('culture', (W.history || 0) * .8); add('romantic', 0);
+  const wantNew = pick('Somewhere new or Somewhere we loved?') === 'Somewhere new';
+  const monthsQ = all.find(q => q.k === 'multi' && /months/.test(q.t)), months = (A[monthsQ?.id] || []).map(m => MONTHS.indexOf(m.toLowerCase()));
+  const maxFlight = { 'Up to 2 hours': 2.2, 'Up to 3 hours': 3.2, 'Up to 4 hours': 4.3, 'Up to 5–6 hours': 6.3 }[pick('Longest flight you\'d happily do for this trip?')] || 99;
+  const country = {}; all.forEach(q => { if (q.k === 'country' && A[q.id]) country[q.country] = A[q.id]; });
+  const dswipe = {}; all.forEach(q => { if (q.dest && A[q.id]) dswipe[q.dest] = A[q.id]; });
+  const jack = (TQ().jack || {});
+  const kw = { zoo: /zoo|aquarium|safari|loro|bioparc|wildlife/i, spa: /spa|bath|therm|hammam|lagoon/i, waterpark: /water ?park|aqua|siam/i };
+  const scored = (window.DEST || []).filter(d => d.region === 'europe').map(d => {
+    let s = 0; const why = [];
+    (d.vibes || []).forEach(v => { const k = v === 'theme-parks' ? 'themepark' : v; s += W[k] || 0; if ((W[k] || 0) >= 2) why.push(k.replace('themepark', 'theme parks')); });
+    if ((d.themeParks || []).length) s += (W.themepark || 0) * .6;
+    const top = (d.top || []).join(' ') + ' ' + (d.themeParks || []).map(p => p.name + ' ' + (p.note || '')).join(' ');
+    for (const k in kw) if (kw[k].test(top) && (W[k] || 0) > 0) { s += W[k] * .8; why.push(k === 'waterpark' ? 'water park' : k); }
+    if (months.length) { const bm = tqMonths(d.best); if ([...bm].some(m => months.includes(m))) { s += 2; why.push('good in your months'); } else s -= 2; }
+    const fh = (String(d.fromMAN || '').match(/~?(\d+)h(\d+)?/) || []); const hrs = fh[1] ? +fh[1] + (+fh[2] || 0) / 60 : 3; if (hrs > maxFlight) s -= 25;
+    const c = country[d.country]; if (c === 'want') { s += 4; why.push(`you want to go to ${d.country}`); } else if (c === 'loved') s += wantNew ? -1 : 2; else if (c === 'been') s -= wantNew ? 3 : 1; else if (c === 'no') s -= 8;
+    const sw = dswipe[d.city]; if (sw === 'love') { s += 7; why.unshift('you loved it'); } else if (sw === 'meh') s += 1; else if (sw === 'no') s -= 10;
+    if (d.visited) s += wantNew ? -6 : 1;
+    if (jack[d.city]) s += 1.5;
+    return { d, s, why: [...new Set(why)].slice(0, 4), jack: jack[d.city] || '' };
+  }).sort((a, b) => b.s - a.s);
+  const best = Math.max(1, scored[0]?.s || 1);
+  scored.forEach(r => r.pct = Math.max(30, Math.min(99, Math.round(60 + 39 * r.s / best))));
+  return scored;
+}
+

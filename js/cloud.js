@@ -24,7 +24,9 @@ const buzz = p => { try { navigator.vibrate && navigator.vibrate(p); } catch {} 
   try {
     const o = JSON.parse(b64uDec(m[1]));
     if (o.u && o.a) LS.set('becki-conn', JSON.stringify({ u: o.u, a: o.a }));
-    if (o.k) { LS.set('becki-key', o.k); if (o.r) LS.set('becki-role', o.r); else LS.del('becki-role'); }
+    if (o.p) window.__ASK_PIN = true;                                          // the PIN link: always ask for a PIN (her game, show mode or Jack)
+    if (o.k && o.r === 'show') { LS.set('becki-show-key', o.k); window.__SHOW_LINK = true; }      // mates' show QR: kept separate, never replaces her login
+    else if (o.k) { LS.set('becki-key', o.k); if (o.r) LS.set('becki-role', o.r); else LS.del('becki-role'); }
   } catch {}
   try { history.replaceState(null, '', location.pathname + location.search); } catch { try { location.hash = ''; } catch {} }   // never leave secrets in the address bar
 })();
@@ -71,18 +73,27 @@ function jackSetupScreen() {
 }
 
 function pinScreen() {
-  let pin = '';
+  let pin = '', wait = null;
   const el = screen(`<div class="gate-card center"><div class="small" style="font-weight:700;letter-spacing:.1em;color:var(--sage-3)">BECKI'S BIRTHDAY GETAWAY</div>
-    <h1 style="font-size:26px;margin:8px 0 4px">Enter your PIN 🌿</h1><p class="small muted" style="margin:0 0 16px">The 4 numbers Jack gave you</p>
-    <div class="pin-dots">${'<i></i>'.repeat(4)}</div><div class="small" data-err style="color:var(--red);min-height:20px;margin:6px 0"></div>
-    <div class="keypad">${[1, 2, 3, 4, 5, 6, 7, 8, 9, '', 0, '⌫'].map(k => `<button class="key ${k === '' ? 'blank' : ''}" data-k="${k}" ${k === '' ? 'disabled' : ''}>${k}</button>`).join('')}</div></div>`);
-  const dots = [...el.querySelectorAll('.pin-dots i')], err = el.querySelector('[data-err]');
-  const paint = () => dots.forEach((d, i) => d.classList.toggle('on', i < pin.length));
+    <h1 style="font-size:26px;margin:8px 0 4px">Enter your PIN 🌿</h1><p class="small muted" style="margin:0 0 16px">The numbers Jack gave you</p>
+    <div class="pin-dots"></div><div class="small" data-err style="color:var(--red);min-height:20px;margin:6px 0"></div>
+    <div class="keypad">${[1, 2, 3, 4, 5, 6, 7, 8, 9, '✓', 0, '⌫'].map(k => `<button class="key" data-k="${k}" aria-label="${k === '✓' ? 'Enter' : k === '⌫' ? 'Delete' : k}">${k}</button>`).join('')}</div></div>`);
+  const box = el.querySelector('.pin-dots'), err = el.querySelector('[data-err]');
+  const paint = () => { const n = Math.max(4, pin.length); box.innerHTML = '<i></i>'.repeat(n); [...box.children].forEach((d, i) => d.classList.toggle('on', i < pin.length)); };
   const go = async () => {
-    try { const r = await rpc('becki_login', { p_pin: pin }); LS.set('becki-key', r.key); LS.set('becki-role', r.role); buzz([20, 40, 20]); start(); }
-    catch (e) { buzz([40, 40, 40]); el.querySelector('.pin-dots').classList.add('shake'); setTimeout(() => el.querySelector('.pin-dots')?.classList.remove('shake'), 400); err.textContent = /too many/i.test(e.message) ? 'Too many tries. Wait 15 minutes and try again.' : /pin/i.test(e.message) ? 'Not quite! Try again.' : 'Can\'t connect right now. Check your signal.'; pin = ''; paint(); }
+    clearTimeout(wait); if (pin.length < 4) return;
+    const tried = pin;
+    try {
+      const r = await rpc('becki_login', { p_pin: tried });
+      buzz([20, 40, 20]);
+      if (r.role === 'show') { LS.set('becki-show-key', r.key); window.__SHOW_LINK = true; return start(); }   // show mode never replaces her own login
+      LS.set('becki-key', r.key); LS.set('becki-role', r.role); start();
+    } catch (e) { buzz([40, 40, 40]); box.classList.add('shake'); setTimeout(() => box.classList.remove('shake'), 400); err.textContent = /too many/i.test(e.message) ? 'Too many tries. Wait 15 minutes and try again.' : /not connected/i.test(e.message) ? 'Open the link Jack sent you first.' : "That's not right. Try again!"; pin = ''; paint(); }
   };
-  el.querySelectorAll('.key').forEach(b => b.onclick = () => { const k = b.dataset.k; buzz(6); err.textContent = ''; if (k === '⌫') pin = pin.slice(0, -1); else if (pin.length < 4) pin += k; paint(); if (pin.length === 4) go(); });
+  el.querySelectorAll('.key').forEach(b => b.onclick = () => { const k = b.dataset.k; buzz(6); err.textContent = ''; clearTimeout(wait);
+    if (k === '⌫') pin = pin.slice(0, -1); else if (k === '✓') return go(); else if (pin.length < 6) pin += k;
+    paint(); if (pin.length === 6) go(); else if (pin.length === 4) wait = setTimeout(go, 1300); });
+  paint();
 }
 
 /* ---------- 4. content + state ---------- */
@@ -128,6 +139,8 @@ window.CLOUD = {
 async function start() {
   key = LS.get('becki-key'); role = LS.get('becki-role');
   if (!MOCK && !conn()) return needLinkScreen();
+  if (window.__ASK_PIN) { window.__ASK_PIN = false; return pinScreen(); }
+  if (window.__SHOW_LINK || (!key && LS.get('becki-show-key'))) return startShow();
   if (!key) return pinScreen();
   if (!role) { try { await rpc('becki_jack_view', { p_key: key }); role = 'jack'; } catch (e) { role = 'becki'; } LS.set('becki-role', role); }
   loading(role === 'jack' ? 'Loading Becki\'s progress…' : 'Unwrapping your present…');
@@ -168,6 +181,36 @@ async function start() {
   app().innerHTML = '';
   window.__startApp();
   if (!window.JACK_MODE && !SANDBOX) setInterval(pull, 60000), addEventListener('visibilitychange', () => document.visibilityState === 'visible' && pull());
+}
+
+// 👀 SHOW MODE (Becki's mates): the real game, read-only. Own local state, nothing saved to the cloud, nothing sent to Discord.
+async function startShow() {
+  key = LS.get('becki-show-key'); role = 'show';
+  loading('Loading the show version…');
+  let rows;
+  try { rows = await rpc('becki_get_content', { p_key: key }); }
+  catch (e) {
+    if (/bad key/i.test(e.message)) { LS.del('becki-show-key'); screen(`<div class="gate-card center"><div style="font-size:40px">🔒</div><h1 style="font-size:22px;margin:10px 0 6px">Show version switched off</h1><p class="muted" style="margin:0">Ask Becki for a new code.</p></div>`); return; }
+    const el = screen(`<div class="gate-card center"><div style="font-size:40px">📶</div><h1 style="font-size:22px;margin:10px 0 6px">Can't connect right now</h1><p class="muted" style="margin:0 0 16px">Check your signal and try again.</p><button class="btn block">Try again</button></div>`);
+    el.querySelector('.btn').onclick = startShow; return;
+  }
+  if (!rows || !rows.game) return;
+  window.GAME = swapImages(rows.game, rows);
+  window.DEST = rows.dest || []; window.HOLS = rows.hols || { school: [], bank: [] };
+  window.CONFIG = Object.assign({}, rows.config || {});
+  window.STORE_KEY = 'becki-show'; window.JACK_MODE = false; window.TEST_SANDBOX = true; window.SHOW_MODE = true; window.SHOW_POT = 50;
+  let ts = {}; try { ts = JSON.parse(LS.get('becki-show') || '{}') || {}; } catch {}
+  if (!ts.opened) ts.opened = Date.now();                                      // skip the private birthday letter
+  window.__INITIAL_STATE = ts;
+  window.CLOUD.queueSave = () => {};
+  window.CLOUD.notify = () => Promise.resolve();
+  window.CLOUD.setWebhook = window.CLOUD.test = window.CLOUD.refresh = () => Promise.reject(new Error('Not available in show mode'));
+  const bar = document.createElement('div'); bar.id = 'testbar-live';
+  bar.innerHTML = '<span>👀 SHOW MODE: nothing is saved · £50 play money</span><button data-r>Start again</button>';
+  document.body.prepend(bar); document.body.classList.add('has-testbar');
+  bar.querySelector('[data-r]').onclick = () => { if (confirm('Wipe this demo and start again?')) { LS.del('becki-show'); location.reload(); } };
+  app().innerHTML = '';
+  window.__startApp();
 }
 
 // Becki's device picks up Jack's overrides (or her other device's progress) when it's newer than what it has
