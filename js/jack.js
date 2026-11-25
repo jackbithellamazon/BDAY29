@@ -15,6 +15,7 @@ function jackTaskInfo(t) {
 
 /* ---------- Jack panel extras (cloud): Discord settings, her photos, everything she answered ---------- */
 function cloudPanel(g) {
+  jackTripBox(g);
   const box = h(`<div><div class="sect">🔔 Discord</div><div class="card" data-dc style="line-height:1.5"><div class="small muted">Checking…</div></div>
     <div class="sect">📸 Her photos</div><div class="card" data-up><div class="small muted">Loading…</div></div>
     <div class="sect">📝 Everything she's answered</div><div class="card small" style="line-height:1.55">${scored().filter(t => S.done[t.id] && (S.done[t.id].text || S.prefs[t.id])).sort((x, y) => S.done[y.id].at - S.done[x.id].at).map(t => `<div style="padding:8px 0;border-bottom:1px solid var(--line)"><b>${esc(t.title)}</b> <span class="muted">+${money(won(t))}</span><div style="white-space:pre-line">${esc(S.prefs[t.id] ? (S.prefs[t.id].skipped ? '(skipped)' : S.prefs[t.id].answer) : S.done[t.id].text)}</div></div>`).join('') || '<span class="muted">Nothing yet.</span>'}</div>

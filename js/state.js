@@ -5,8 +5,9 @@ const codeOf = (t, k = 'code') => { const c = dec(t.enc2 || '') || {}; return c[
 let tab = 'home', filter = 'todo', cat = null, leafTaps = 0;
 
 /* ---------- state ---------- */
+const LOCAL = () => (window.NO_LOCAL ? sessionStorage : localStorage);   // PIN-link sessions never write to the phone's permanent storage
 let resetting = false;
-const save = () => { if (resetting) return; S.savedAt = Date.now(); try { localStorage.setItem(KEY, JSON.stringify(S)); } catch {} if (window.CLOUD) window.CLOUD.queueSave(S, doneCount(), earned()); };
+const save = () => { if (resetting) return; S.savedAt = Date.now(); try { LOCAL().setItem(KEY, JSON.stringify(S)); } catch {} if (window.CLOUD) window.CLOUD.queueSave(S, doneCount(), earned()); };
 
 
 /* ---------- game data ---------- */
@@ -25,7 +26,7 @@ const OVER = () => (C.overCap ?? 100);   // casino profit can push her past the 
 const potLimit = () => C.cap + Math.max(0, Math.min(OVER(), (S.casino && S.casino.net) || 0));
 const earned = () => Math.max(0, Math.min(potLimit(), rawEarned()));   // casino wins and losses included
 const POOL = () => (G && G.prizePool) || [];
-const pickPool = (filter = p => !p.lose && !p.again) => { const L = POOL().filter(filter), w = L.map(p => p.rare ? 1 : 6), tot = w.reduce((x, y) => x + y, 0); let r = rnd(tot); for (let i = 0; i < L.length; i++) { if ((r -= w[i]) < 0) return L[i]; } return L[0]; };
+const pickPool = (filter = p => !p.lose && !p.again) => { const L = POOL().filter(p => !(window.SHOW_MODE && p.spicy)).filter(filter), w = L.map(p => p.rare ? 1 : 6), tot = w.reduce((x, y) => x + y, 0); let r = rnd(tot); for (let i = 0; i < L.length; i++) { if ((r -= w[i]) < 0) return L[i]; } return L[0]; };
 // give her a pool prize: coupons go to Coupons, £5 goes to the pot (until the £30 bonus cap). Returns text, or null = not a winner.
 function awardPool(p, from) {
   if (!p || p.lose || p.again) return null;

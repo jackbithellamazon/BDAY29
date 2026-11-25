@@ -6,11 +6,12 @@ if (window.GAME) return;                       // offline demo/test builds carry
 
 const QS = new URLSearchParams(location.search);
 const MOCK = QS.has('mock') || window.__FORCE_MOCK === true;
+const store = () => { try { return window.NO_LOCAL ? sessionStorage : localStorage; } catch { return null; } };   // the PIN link keeps nothing on the phone (Jack, 24 Nov)
 const LS = {
   mem: {},
-  get(k) { try { const v = localStorage.getItem(k); return v === null ? (this.mem[k] ?? null) : v; } catch { return this.mem[k] ?? null; } },
-  set(k, v) { this.mem[k] = v; try { localStorage.setItem(k, v); } catch {} },
-  del(k) { delete this.mem[k]; try { localStorage.removeItem(k); } catch {} },
+  get(k) { try { const v = store().getItem(k); return v === null ? (this.mem[k] ?? null) : v; } catch { return this.mem[k] ?? null; } },
+  set(k, v) { this.mem[k] = v; try { store().setItem(k, v); } catch {} },
+  del(k) { delete this.mem[k]; try { store().removeItem(k); } catch {} },
 };
 const STATE_KEY = 'becki-getaway-v2';
 const b64uDec = s => { s = s.replace(/-/g, '+').replace(/_/g, '/'); while (s.length % 4) s += '='; return new TextDecoder().decode(Uint8Array.from(atob(s), c => c.charCodeAt(0))); };
@@ -23,12 +24,17 @@ const buzz = p => { try { navigator.vibrate && navigator.vibrate(p); } catch {} 
   if (!m) return;
   try {
     const o = JSON.parse(b64uDec(m[1]));
+    if (o.p && !o.k) {   // PIN link: session only, and clear anything an older visit left on this phone
+      window.NO_LOCAL = true;
+      try { Object.keys(localStorage).filter(k => /^becki/.test(k)).forEach(k => localStorage.removeItem(k)); } catch {}
+    }
     if (o.u && o.a) LS.set('becki-conn', JSON.stringify({ u: o.u, a: o.a }));
-    if (o.p) window.__ASK_PIN = true;                                          // the PIN link: always ask for a PIN (her game, show mode or Jack)
+    if (o.p) { let ok = false; try { ok = sessionStorage.getItem('becki-pinok') === '1'; } catch {} if (!ok) window.__ASK_PIN = true;   // once per visit, not on every reload
+      if (o.nj) LS.set('becki-nojack', '1'); else LS.del('becki-nojack'); }   // her link: her PIN + show PIN only                                          // the PIN link: always ask for a PIN (her game, show mode or Jack)
     if (o.k && o.r === 'show') { LS.set('becki-show-key', o.k); window.__SHOW_LINK = true; }      // mates' show QR: kept separate, never replaces her login
     else if (o.k) { LS.set('becki-key', o.k); if (o.r) LS.set('becki-role', o.r); else LS.del('becki-role'); }
   } catch {}
-  try { history.replaceState(null, '', location.pathname + location.search); } catch { try { location.hash = ''; } catch {} }   // never leave secrets in the address bar
+  if (!m[1] || /"k"/.test(b64uDec(m[1]))) { try { history.replaceState(null, '', location.pathname + location.search); } catch { try { location.hash = ''; } catch {} } }   // never leave a key in the address bar (PIN links have none, so they stay for Home Screen)
 })();
 
 /* ---------- 2. talking to Supabase (or the in-page mock) ---------- */
@@ -85,7 +91,8 @@ function pinScreen() {
     const tried = pin;
     try {
       const r = await rpc('becki_login', { p_pin: tried });
-      buzz([20, 40, 20]);
+      if (r.role === 'jack' && LS.get('becki-nojack') === '1') throw new Error('wrong pin');   // Becki's link never opens Jack's page
+      buzz([20, 40, 20]); try { sessionStorage.setItem('becki-pinok', '1'); } catch {}
       if (r.role === 'show') { LS.set('becki-show-key', r.key); window.__SHOW_LINK = true; return start(); }   // show mode never replaces her own login
       LS.set('becki-key', r.key); LS.set('becki-role', r.role); start();
     } catch (e) { buzz([40, 40, 40]); box.classList.add('shake'); setTimeout(() => box.classList.remove('shake'), 400); err.textContent = /too many/i.test(e.message) ? 'Too many tries. Wait 15 minutes and try again.' : /not connected/i.test(e.message) ? 'Open the link Jack sent you first.' : "That's not right. Try again!"; pin = ''; paint(); }
@@ -206,9 +213,10 @@ async function startShow() {
   window.CLOUD.notify = () => Promise.resolve();
   window.CLOUD.setWebhook = window.CLOUD.test = window.CLOUD.refresh = () => Promise.reject(new Error('Not available in show mode'));
   const bar = document.createElement('div'); bar.id = 'testbar-live';
-  bar.innerHTML = '<span>👀 SHOW MODE: nothing is saved · £50 play money</span><button data-r>Start again</button>';
+  bar.innerHTML = '<span>👀 SHOW MODE: nothing is saved · £50 play money</span><button data-r>Start again</button><button data-p>🔢 Enter a PIN</button>';
   document.body.prepend(bar); document.body.classList.add('has-testbar');
   bar.querySelector('[data-r]').onclick = () => { if (confirm('Wipe this demo and start again?')) { LS.del('becki-show'); location.reload(); } };
+  bar.querySelector('[data-p]').onclick = () => { LS.del('becki-show-key'); LS.del('becki-show'); window.__SHOW_LINK = false; document.body.classList.remove('has-testbar'); bar.remove(); app().innerHTML = ''; pinScreen(); };   // leave show mode for a real PIN
   app().innerHTML = '';
   window.__startApp();
 }

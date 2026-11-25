@@ -389,6 +389,28 @@ function gEmoji(t, g, done) {
   step();
 }
 
+// Who's More Likely, endless: a big pool, 10 random unseen statements a round, each round pays its share of the prize
+function gWhoisPool(t, g, close) {
+  const seen = ((S.wl ||= {})[t.id] ||= []), left = t.pool.filter(s => !seen.includes(s)), total = Math.ceil(t.pool.length / (t.per || 10)), roundsDone = Math.ceil(seen.length / (t.per || 10));
+  if (!left.length) { g.innerHTML = `<div class="card center"><div style="font-size:40px">🏆</div><h3 style="margin:8px 0">Every single one answered!</h3><p class="muted">All ${t.pool.length} done. Jack's read them all 😏</p><button class="btn block">Back</button></div>`; g.querySelector('.btn').onclick = close; return; }
+  const round = shuffle(left).slice(0, t.per || 10), picks = []; let i = 0;
+  const step = () => {
+    if (i >= round.length) {
+      seen.push(...round); const r = roundsDone + 1, before = won(t);
+      S.done[t.id] = { frac: Math.min(1, r / total), at: Date.now(), note: '', text: `Round ${r} of ${total}` }; save();
+      const got = won(t) - before, me = picks.filter(p => p === 'Becki').length, jk = picks.length - me;
+      discord(`${t.spicy ? '🌶️ ' : ''}🤷 **${C.name}** · ${t.title}, round ${r} of ${total} (+${money(got)})\n${round.map((s, k) => `${s} → **${picks[k]}**`).join('\n')}`);
+      confetti(70); buzz([20, 40, 20]);
+      g.innerHTML = `<div class="card center"><div style="font-size:40px">⚖️</div><h2 style="margin:6px 0">You: ${me} · Jack: ${jk}</h2><p class="muted">${me > jk ? 'Well, at least you\'re honest. 😂' : jk > me ? 'Blaming Jack for everything, as usual. 🙄' : 'Perfectly balanced.'}</p>${got > 0 ? `<div class="won">+${money(got)}</div>` : ''}<p class="small muted">Round ${r} of ${total} done${left.length - round.length ? ` · ${left.length - round.length} questions left` : ' · that was the last one!'}</p><div class="row" style="gap:8px"><button class="btn ghost" style="flex:1" data-a="back">Back</button>${left.length - round.length ? '<button class="btn" style="flex:1" data-a="next">Next round →</button>' : ''}</div></div>`;
+      g.querySelector('[data-a=back]').onclick = close;
+      const nx = g.querySelector('[data-a=next]'); if (nx) nx.onclick = () => gWhoisPool(t, g, close);
+      return;
+    }
+    g.innerHTML = `<div class="prog"><i style="width:${i / round.length * 100}%"></i></div><div class="small muted center" style="font-weight:700">Round ${roundsDone + 1} of ${total} · ${i + 1} of ${round.length} · WHO'S MORE LIKELY TO…</div><div class="card center" style="margin-top:10px"><div class="q" style="margin:0">${esc(round[i])}</div></div><div class="tot" style="margin-top:14px"><button class="totc" data-p="Becki">🙋‍♀️<br>Me</button><button class="totc" data-p="Jack">🧔<br>Jack</button></div>`;
+    g.querySelectorAll('.totc').forEach(b => b.onclick = () => { b.classList.add('pick'); buzz(8); picks.push(b.dataset.p); setTimeout(() => { i++; step(); }, 220); });
+  };
+  step();
+}
 function gWhois(t, g, done) {
   const S2 = t.statements, picks = []; let i = 0;
   const step = () => {
@@ -407,23 +429,23 @@ function gWhois(t, g, done) {
 
 function gMatch3(t, g, done, ctx) {
   const okP = p => !p.lose && !p.again && (!t.only || p.size === t.only || p.forfeit);
-  const PZ = [...POOL().filter(okP), { e: '🌿', l: 'JACKPOT', jackpot: true }], JP = PZ.length - 1;
+  const PZ = [...POOL().filter(p => okP(p) && !(window.SHOW_MODE && p.spicy)), { e: '🌿', l: 'JACKPOT', jackpot: true }], JP = PZ.length - 1;
   const LINES = [[0,1,2],[3,4,5],[6,7,8],[0,3,6],[1,4,7],[2,5,8],[0,4,8],[2,4,6]];
   const makeCard = winIdx => { for (let tries = 0; tries < 3000; tries++) { const c = Array.from({ length: 9 }, () => rnd(PZ.length)); let line = null; if (winIdx != null) { line = LINES[rnd(LINES.length)]; line.forEach(i => c[i] = winIdx); } const found = LINES.filter(l => c[l[0]] === c[l[1]] && c[l[1]] === c[l[2]]); if ((winIdx == null && !found.length) || (winIdx != null && found.length === 1)) return { c, line }; } return { c: [0,1,2,3,4,5,6,7,0], line: null }; };
   // ~40% per card; on her FIRST play the last card always wins if nothing has (birthday rule). Replays: no guarantee.
-  const cards = t.cards || 3, plan = []; let anyWin = false;
-  for (let k = 0; k < cards; k++) { const win = (k === cards - 1 && !anyWin) || rnd(100) < 40; if (win) anyWin = true; plan.push(makeCard(win ? (rnd(100) < 12 ? JP : PZ.indexOf(pickPool(p => okP(p) && !p.money))) : null)); }   // every play wins at least once
+  const cards = t.cards || 3, plan = [], sure = rnd(cards);   // one random card is a sure win (not always the last!), the others are 30% each
+  for (let k = 0; k < cards; k++) { const win = k === sure || rnd(100) < 30; plan.push(makeCard(win ? (rnd(100) < 6 ? JP : PZ.indexOf(pickPool(p => okP(p) && !(p.money > 0)))) : null)); }
   let k = 0; const won = [];
   const show = () => {
     if (k >= plan.length) return finish();
     const { c, line } = plan[k];
-    g.innerHTML = `${ctx ? `<div class="replaybar">🔁 Replay ${ctx.left === Infinity ? '' : `· ${ctx.left} left`}</div>` : ''}<div class="small muted center" style="font-weight:700;letter-spacing:.06em">CARD ${k + 1} OF ${plan.length}</div><div class="m3wrap"><div class="m3">${c.map((p, i) => `<div class="m3c" data-i="${i}"><span>${PZ[p].e}</span><small>${esc(PZ[p].l)}</small></div>`).join('')}</div><canvas></canvas></div><p class="small muted center" data-msg style="margin:10px 0 0">Scratch the whole card with your finger</p><div class="after"></div>`;
+    g.innerHTML = `${ctx ? `<div class="replaybar">🔁 Replay ${ctx.left === Infinity ? '' : `· ${ctx.left} left`}</div>` : ''}<div class="small muted center" style="font-weight:700;letter-spacing:.06em">CARD ${k + 1} OF ${plan.length}</div><div class="m3wrap"><div class="m3">${c.map((p, i) => `<div class="m3c" data-i="${i}"><span>${PZ[p].e}</span><small>${esc(PZ[p].short || PZ[p].l)}</small></div>`).join('')}</div><canvas></canvas></div><p class="small muted center" data-msg style="margin:10px 0 0">Scratch the whole card with your finger</p><div class="after"></div>`;
     const cv = g.querySelector('canvas'), cx2 = cv.getContext('2d'), msg = g.querySelector('[data-msg]'); let down = false, last = null, n = 0, done_ = false;
     requestAnimationFrame(() => { const r = cv.getBoundingClientRect(); cv.width = r.width * devicePixelRatio; cv.height = r.height * devicePixelRatio; cx2.scale(devicePixelRatio, devicePixelRatio); const gr = cx2.createLinearGradient(0, 0, r.width, r.height); gr.addColorStop(0, '#b7c4ab'); gr.addColorStop(.5, '#e1e8d8'); gr.addColorStop(1, '#9caf88'); cx2.fillStyle = gr; cx2.fillRect(0, 0, r.width, r.height); cx2.fillStyle = '#566f4c'; cx2.font = '800 18px "DM Sans", sans-serif'; cx2.textAlign = 'center'; cx2.fillText('🌿 SCRATCH ME 🌿', r.width / 2, r.height / 2 + 6); cx2.globalCompositeOperation = 'destination-out'; cx2.lineWidth = 46; cx2.lineCap = 'round'; cx2.lineJoin = 'round'; });
     const reveal = () => { if (done_) return; done_ = true; cv.style.transition = 'opacity .5s'; cv.style.opacity = 0; cv.style.pointerEvents = 'none';
       if (line) { line.forEach(i => g.querySelector(`.m3c[data-i="${i}"]`).classList.add('hit')); const pz = PZ[c[line[0]]];
         if (pz.jackpot) { const p1 = pickPool(q => !q.lose && !q.again && !q.forfeit), p2 = p1.money ? p1 : pickPool(q => !q.lose && !q.again && !q.forfeit); won.push(p1, p2); confetti(220); buzz([20, 40, 20, 40, 20]); msg.innerHTML = `<b>🌿🌿🌿 JACKPOT! DOUBLE WIN:</b><br>${[p1, p2].map(p => esc(p.money ? '£5 for your pot 💷' : p.prize || p.l)).join(' + ')}`; }
-        else { won.push(pz); confetti(110); buzz([20, 40, 20]); msg.innerHTML = `<b>3 in a row! ${pz.forfeit ? 'Uh oh…' : 'You win:'} ${esc(pz.money ? '£5 for your pot 💷' : pz.prize)}</b>`; } }
+        else { won.push(pz); confetti(110); buzz([20, 40, 20]); msg.innerHTML = `<b>3 in a row! ${pz.forfeit || pz.money < 0 ? 'Uh oh…' : 'You win:'} ${esc(pz.money < 0 ? `−£${-pz.money} off your holiday pot 😬` : pz.money ? `£${pz.money} for your pot 💷` : pz.prize)}</b>`; } }
       else { buzz([30, 30, 30]); msg.textContent = 'No match this time…'; }
       const b = h(`<button class="btn block" style="margin-top:10px">${k + 1 < plan.length ? 'Next card →' : 'See my winnings'}</button>`); g.querySelector('.after').appendChild(b); b.onclick = () => { k++; show(); }; };
     const check = () => { const d = cx2.getImageData(0, 0, cv.width, cv.height).data; let cl = 0; for (let i = 3; i < d.length; i += 64) if (d[i] === 0) cl++; if (cl / (d.length / 64) > .55) reveal(); };
@@ -571,13 +593,24 @@ function gRps(t, g, done) {
 }
 
 function gWheel(t, g, done, ctx) {
-  const segs = t.segments.map(s => typeof s === 'string' ? { e: '', l: s, prize: s, again: /spin again/i.test(s) } : s), n = segs.length, cols = ['#9caf88', '#e9b8a9', '#d9a94a', '#7f9a72', '#f2cfc4', '#b9c9a8', '#ecc777', '#c9d6bb'];
+  // t.deal = re-deal a fresh random wheel from the prize pool every spin (Jack 24 Nov: "more random, like an algorithm")
+  const dealt = () => { const want = t.deal.size || 14, pool = POOL().filter(p => !p.lose && !p.again && (!t.deal.only || (t.deal.only === 'jack' ? (p.jack || p.forfeit) : true)) && !(p.money && !t.deal.money)), out = [], used = new Set();
+    while (out.length < want - (t.deal.again || 1) - (t.deal.lose ? 1 : 0) && used.size < pool.length) { const p = pickPool(q => pool.includes(q) && !used.has(q.l)); if (!p || used.has(p.l)) break; used.add(p.l); out.push({ e: p.e, l: p.short || p.l, prize: p.prize, forfeit: p.forfeit, jack: p.jack, money: p.money }); }
+    for (let k = 0; k < (t.deal.again || 1); k++) out.push({ e: '🔁', l: 'Spin again!', again: true });
+    if (t.deal.lose && rnd(100) < 70) out.push({ e: '💸', l: 'Lose £2', money: -2 });
+    const neg = POOL().filter(p => p.money < 0), ff = POOL().filter(p => p.forfeit && !used.has(p.l));
+    for (let k = 0; k < (t.deal.loses || 0) && neg.length; k++) { const p = neg[rnd(neg.length)]; out.push({ e: p.e, l: p.short || p.l, money: p.money }); }
+    let haveF = out.filter(x => x.forfeit).length;
+    while (haveF < (t.deal.forfeits || 0) && ff.length) { const p = ff.splice(rnd(ff.length), 1)[0]; out.splice(out.findIndex(x => !x.forfeit && !x.again && !(x.money < 0)), 1); out.push({ e: p.e, l: p.short || p.l, prize: p.prize, forfeit: true }); haveF++; }
+    return shuffle(out); };
+  const segs = (t.deal ? dealt() : t.segments).map(s => typeof s === 'string' ? { e: '', l: s, prize: s, again: /spin again/i.test(s) } : s), n = segs.length, cols = ['#9caf88', '#e9b8a9', '#d9a94a', '#7f9a72', '#f2cfc4', '#b9c9a8', '#ecc777', '#c9d6bb'];
   const R = 150, paths = segs.map((s, k) => {
     const a0 = (k / n) * 2 * Math.PI - Math.PI / 2, a1 = ((k + 1) / n) * 2 * Math.PI - Math.PI / 2, am = (a0 + a1) / 2;
     const x0 = R + R * Math.cos(a0), y0 = R + R * Math.sin(a0), x1 = R + R * Math.cos(a1), y1 = R + R * Math.sin(a1);
     const tx = R + R * .6 * Math.cos(am), ty = R + R * .6 * Math.sin(am);
     const lab = `${s.e ? s.e + ' ' : ''}${s.l}`;
-    return `<path d="M${R},${R} L${x0},${y0} A${R},${R} 0 0 1 ${x1},${y1} Z" fill="${s.lose ? '#d8d6cc' : s.again ? '#566f4c' : cols[k % cols.length]}" stroke="#fffdf8" stroke-width="3"/><text x="${tx}" y="${ty}" transform="rotate(${am * 180 / Math.PI} ${tx} ${ty})" text-anchor="middle" dominant-baseline="middle" font-size="10.5" font-weight="700" fill="${s.again ? '#fff' : '#2f3a2c'}" font-family="DM Sans">${esc(lab.length > 20 ? lab.slice(0, 19) + '…' : lab)}</text>`;
+    const deg = am * 180 / Math.PI, flip = deg > 90 && deg < 270 ? deg + 180 : deg;
+    return `<path d="M${R},${R} L${x0},${y0} A${R},${R} 0 0 1 ${x1},${y1} Z" fill="${s.lose ? '#d8d6cc' : s.again ? '#566f4c' : s.forfeit ? '#e2b6a6' : cols[k % cols.length]}" stroke="#fffdf8" stroke-width="3"/><text x="${tx}" y="${ty}" transform="rotate(${flip} ${tx} ${ty})" text-anchor="middle" dominant-baseline="middle" font-size="10.5" font-weight="700" fill="${s.again ? '#fff' : '#2f3a2c'}" font-family="DM Sans">${esc(lab.length > 20 ? lab.slice(0, 19) + '…' : lab)}</text>`;
   }).join('');
   const left = ctx ? ctx.left : replayMax(t);
   g.innerHTML = `<div class="replaybar">🎡 ${left === Infinity ? '' : `${left} spin${left === 1 ? '' : 's'} left`}${ctx ? '' : ' · this is your first'}</div><div class="wheelwrap"><div class="pointer"></div><svg viewBox="0 0 300 300">${paths}<circle cx="150" cy="150" r="22" fill="#fffdf8"/><text x="150" y="152" text-anchor="middle" dominant-baseline="middle" font-size="20">🎂</text></svg></div><button class="btn block">Spin!</button><div class="after"></div>`;
@@ -591,7 +624,7 @@ function gWheel(t, g, done, ctx) {
       const label = got || (s.money ? 'Not a winner (pot bonus maxed out)' : 'Not a winner ❌');
       if (got && !(s.money < 0)) { buzz([20, 40, 20]); confetti(80); } else buzz([30, 30, 30]);
       g.querySelector('.after').innerHTML = `<div class="coupon" style="text-align:center"><span class="small muted">THE WHEEL HAS SPOKEN</span><b style="font-size:20px">${esc(label)}</b></div><button class="btn block">${ctx ? 'Done' : 'Claim it'}</button>`; b.remove();
-      g.querySelector('.after .btn').onclick = () => ctx ? ctx.finish(got ? [got] : [], `${s.e || ''} ${s.l}`) : done(1, { text: `🎡 Wheel spin 1/${replayMax(t)}: **${s.l}**`, msg: got ? `You won: ${got}. You've got ${replayMax(t) - 1} more spins! 🔁` : `Not a winner this time… but you've got ${replayMax(t) - 1} more spins! 🔁` });
+      g.querySelector('.after .btn').onclick = () => ctx ? ctx.finish(got ? [got] : [], `${s.e || ''} ${s.l}`) : done(1, { text: `🎡 Wheel spin 1${replayMax(t) === Infinity ? '' : '/' + replayMax(t)}: **${s.l}**`, msg: got ? `You won: ${got}. ${replayMax(t) === Infinity ? 'Spin again whenever you like! 🔁' : `You've got ${replayMax(t) - 1} more spins! 🔁`}` : `Not a winner this time… but ${replayMax(t) === Infinity ? 'you can spin again whenever you like! 🔁' : `you've got ${replayMax(t) - 1} more spins! 🔁`}` });
     }, 4700);
   };
 }

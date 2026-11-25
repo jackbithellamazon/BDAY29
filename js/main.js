@@ -5,7 +5,7 @@ QS = new URLSearchParams(location.search);
 TEST = QS.has('jack') || window.FORCE_TEST === true;
 SEND = !TEST || QS.has('post');
 KEY = window.STORE_KEY || (TEST ? 'becki-getaway-test' : 'becki-getaway-v2');
-S = window.__INITIAL_STATE || (() => { try { return JSON.parse(localStorage.getItem(KEY)) || {}; } catch { return {}; } })();
+S = window.__INITIAL_STATE || (() => { try { return JSON.parse(LOCAL().getItem(KEY)) || {}; } catch { return {}; } })();
 window.__S = S;
 S.done ||= {}; S.prizes ||= []; S.prefs ||= {}; S.plan ||= {}; S.bonus ||= 0; S.plays ||= {};
 if (TEST) window.__t = { matches: (g, a, s) => matches(g, a, s), hasAll: (g, n) => hasAll(g, n), S: () => S };

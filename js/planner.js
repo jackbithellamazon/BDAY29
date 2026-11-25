@@ -144,6 +144,7 @@ function planner(w, total) {
     body.appendChild(h(`<div class="card"><p style="margin:0 0 10px;line-height:1.5">Anywhere in the world. Search a city or country, or tap a vibe, then tap a place to see what's there. <span class="muted">Not sure yet? Skip to dates and come back.</span></p><input class="field" data-q placeholder="🔎 Lisbon, Italy, beach, theme parks…" autocomplete="off"><div class="chips" data-v>${[['theme-parks', '🎢 Theme parks'], ['city', '🏙️ City'], ['beach', '🏖️ Beach'], ['food', '🍝 Food'], ['romantic', '💕 Romantic'], ['nature', '🏔️ Nature'], ['snow', '❄️ Snow'], ['longhaul', '🌏 Long-haul']].map(([k, l]) => `<button class="chip ${P.vibe === k ? 'on' : ''}" data-k="${k}">${l}</button>`).join('')}</div></div>`));
     const list = h('<div class="dgrid"></div>'); body.appendChild(list);
     function pick(d) { P.dest = d.city; P.country = d.country; save(); confetti(60); buzz([20, 30]); go(P.from && P.to ? 3 : 2); }
+    tripPicks(body, pick);
     const draw = () => {
       const q = squash(P.q || ''), v = P.vibe;
       let L = DEST.filter(d => (!q || squash(d.city + d.country).includes(q) || (d.vibes || []).some(x => squash(x).includes(q)) || (d.top || []).some(x => squash(x).includes(q)) || (d.themeParks || []).some(p => squash(p.name).includes(q))) && (!v || (v === 'longhaul' ? d.region === 'longhaul' : v === 'theme-parks' ? d.themeParks?.length : (d.vibes || []).includes(v))));
@@ -391,5 +392,49 @@ function tqScore() {
   const best = Math.max(1, scored[0]?.s || 1);
   scored.forEach(r => r.pct = Math.max(30, Math.min(99, Math.round(60 + 39 * r.s / best))));
   return scored;
+}
+
+// ===== Cash-out: how she earned it, her quiz picks, and the shortlist she sends to Jack
+function earnBreakdown(w, total) {
+  const rows = SECT.map(([k, em, name]) => { const ts = scored().filter(t => t.cat === k && S.done[t.id]); return [em, name, ts.reduce((a, t) => a + won(t), 0), ts.reduce((a, t) => a + Math.max(0, (t.amount || 0) - won(t)), 0)]; }).filter(r => r[2] > 0);
+  const lost = rows.reduce((a, r) => a + r[3], 0), cas = (S.casino && S.casino.net) || 0, bon = Math.min(BONUS_CAP, S.bonus || 0), coupons = (S.prizes || []).filter(p => !p.owed).length;
+  const c = h(`<details class="card earnbd"><summary><b>💰 How you earned ${money(total)}</b><span class="small muted">Tap to see</span></summary><div class="ebrows">${rows.map(([em, name, got]) => `<div class="ebrow"><span>${em} ${esc(name)}</span><b>+${money(got)}</b></div>`).join('')}${bon ? `<div class="ebrow"><span>🎡 Wheel bonuses</span><b>${bon >= 0 ? '+' : '−'}${money(Math.abs(bon))}</b></div>` : ''}${cas ? `<div class="ebrow"><span>🎰 Casino</span><b class="${cas < 0 ? 'neg' : ''}">${cas >= 0 ? '+' : '−'}${money(Math.abs(cas))}</b></div>` : ''}</div><p class="small muted" style="margin:10px 0 0">${lost > 0 ? `Wrong answers and hints cost you ${money(lost)} 😅` : 'Not a single penny lost to wrong answers. Unreal.'}${coupons ? ` · Plus ${coupons} coupon${coupons === 1 ? '' : 's'} to cash in!` : ''}</p><p class="small muted" style="margin:6px 0 0">Rough guide: about ${money(total * .35)} flights, ${money(total * .45)} stay, ${money(total * .2)} activity. Totally up to you!</p></details>`);
+  w.appendChild(c);
+}
+function tripPicks(body, pick) {
+  const P = S.plan; P.short ||= [];
+  const J = P.jack || null;
+  if (J && (J.wild || J.veto || J.note)) body.appendChild(h(`<div class="card jackreply"><b>🧔 Jack's had his say!</b>${J.veto ? `<div style="margin-top:6px">❌ Not ${esc(J.veto)}${J.vetoWhy ? `: <span class="muted">${esc(J.vetoWhy)}</span>` : ''}</div>` : ''}${J.wild ? `<div style="margin-top:6px">🃏 Wildcard: <b>${esc(J.wild)}</b>${J.wildWhy ? ` <span class="muted">(${esc(J.wildWhy)})</span>` : ''}</div>` : ''}${J.note ? `<div class="fun" style="margin-top:8px">${esc(J.note)}</div>` : ''}</div>`));
+  if (!TQ() || tqCount()[0] < 40) { if (TQ()) { const t = h(`<div class="card small">🗺️ Do at least 40 questions of your <a href="#" data-q>Dream Trip Quiz</a> and I'll pick places just for you.</div>`); t.querySelector('[data-q]').onclick = e => { e.preventDefault(); openTripQuiz(); }; body.appendChild(t); } return; }
+  const res = tqScore().filter(r => !(J && J.veto === r.d.city)).slice(0, 8);
+  const wrap = h(`<div class="card picks"><div class="row" style="justify-content:space-between;align-items:center"><b>💚 Picked for you</b><span class="small muted">from your quiz</span></div><p class="small muted" style="margin:4px 0 10px">Tap ♡ to shortlist up to 3, then send them to Jack.</p><div class="pickrow"></div><div data-short></div></div>`);
+  const row = wrap.querySelector('.pickrow');
+  const drawShort = () => {
+    const box = wrap.querySelector('[data-short]');
+    box.innerHTML = P.short.length ? `<div class="small" style="margin-top:10px;font-weight:700">Your shortlist: ${P.short.map(esc).join(' · ')}</div>${P.sentTop3 ? `<div class="small muted" style="margin-top:4px">Sent to Jack ✓ ${J && (J.wild || J.veto) ? '(he replied above!)' : '(waiting for his say…)'}</div>` : ''}<button class="btn block" data-send style="margin-top:8px">${P.sentTop3 ? 'Send my updated top 3 to Jack 🧔' : 'Send my top 3 to Jack 🧔'}</button>` : '';
+    const sb = box.querySelector('[data-send]');
+    if (sb) sb.onclick = () => { P.sentTop3 = Date.now(); save(); discord(`🗺️ **${C.name}**'s top ${P.short.length} for the trip:\n${P.short.map((c, i) => `${i + 1}. ${c}`).join('\n')}\n_Open your Jack page to veto one and add a wildcard 🃏_`); buzz([20, 40, 20]); confetti(60); drawShort(); };
+  };
+  res.forEach(r => {
+    const on = P.short.includes(r.d.city);
+    const c = h(`<div class="pickcard ${on ? 'on' : ''}"><button class="heart" aria-label="Shortlist ${esc(r.d.city)}">${on ? '♥' : '♡'}</button><div class="pf">${r.d.flag || '🌍'}</div><b>${esc(r.d.city)}</b><span class="tqpct" style="font-size:15px">${r.pct}%</span>${r.jack ? '<span class="jk">🧔 Jack 👍</span>' : ''}<button class="small linkish" data-look>See it</button></div>`);
+    c.querySelector('.heart').onclick = () => { const i = P.short.indexOf(r.d.city); if (i >= 0) P.short.splice(i, 1); else { if (P.short.length >= 3) { buzz([30, 30]); return; } P.short.push(r.d.city); } save(); buzz(8); const now = P.short.includes(r.d.city); c.classList.toggle('on', now); c.querySelector('.heart').textContent = now ? '♥' : '♡'; drawShort(); };
+    c.querySelector('[data-look]').onclick = () => placePage(r.d, pick);
+    row.appendChild(c);
+  });
+  drawShort();
+  body.appendChild(wrap);
+}
+// Jack's side: see her shortlist, veto one, add a wildcard, send a note
+function jackTripBox(g) {
+  const P = S.plan || {}; const J = P.jack ||= {};
+  const box = h(`<div><div class="sect">🗺️ Her trip shortlist</div><div class="card" style="line-height:1.5">${(P.short || []).length ? `<div>Her top ${P.short.length}: <b>${P.short.map(esc).join(' · ')}</b>${P.sentTop3 ? ` <span class="small muted">(sent ${new Date(P.sentTop3).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })})</span>` : ' <span class="small muted">(not sent to you yet)</span>'}</div>
+    <label class="small" style="font-weight:700;display:block;margin-top:10px">❌ Veto one (optional)</label><select class="field" data-veto><option value="">No veto</option>${P.short.map(c => `<option ${J.veto === c ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select><input class="field" data-vw placeholder="Why? (optional)" value="${esc(J.vetoWhy || '')}" style="margin-top:6px">
+    <label class="small" style="font-weight:700;display:block;margin-top:10px">🃏 Your wildcard</label><input class="field" data-wild list="jkdest" placeholder="Type a place" value="${esc(J.wild || '')}"><datalist id="jkdest">${DEST.map(d => `<option value="${esc(d.city)}">`).join('')}</datalist><input class="field" data-ww placeholder="Why? (optional)" value="${esc(J.wildWhy || '')}" style="margin-top:6px">
+    <label class="small" style="font-weight:700;display:block;margin-top:10px">💬 A note to her</label><textarea class="field" data-note rows="2" placeholder="Optional">${esc(J.note || '')}</textarea>
+    <button class="btn block" data-go style="margin-top:10px">Send my say to Becki</button>` : '<div class="small muted">She hasn\'t shortlisted anywhere yet. When she does (from her Trip Quiz matches), it shows here.</div>'}${S.tqResults ? `<div class="small muted" style="margin-top:10px">Her quiz top matches: ${S.tqResults.top.map(r => `${esc(r.city)} ${r.pct}%`).join(' · ')}</div>` : ''}</div></div>`);
+  g.appendChild(box);
+  const gb = box.querySelector('[data-go]');
+  if (gb) gb.onclick = () => { J.veto = box.querySelector('[data-veto]').value; J.vetoWhy = box.querySelector('[data-vw]').value.trim(); J.wild = box.querySelector('[data-wild]').value.trim(); J.wildWhy = box.querySelector('[data-ww]').value.trim(); J.note = box.querySelector('[data-note]').value.trim(); J.at = Date.now(); S.plan = P; save(); gb.textContent = 'Sent ✓'; buzz(15); };
 }
 
